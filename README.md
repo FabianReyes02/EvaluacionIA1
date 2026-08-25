@@ -6,7 +6,7 @@ Este proyecto es una solución integral basada en Inteligencia Artificial (LLMs)
 Proyecto desarrollado para la Evaluación Parcial N°1 de la asignatura Ingeniería de Soluciones con IA.
 
 ## 👥 Equipo de Trabajo
-* **Estudiante 1:** Fabián Reyes
+* **Estudiante** Fabián Reyes
 * **Caso Organizacional:** Repuestos Sur
 
 ## 🛠️ Tecnologías Utilizadas
@@ -25,5 +25,5 @@ Sigue estos pasos para configurar el entorno local:
 
 1. **Clonar el repositorio:**
    ```bash
-   git clone [https://github.com/tu-usuario/tu-repositorio.git](https://github.com/tu-usuario/tu-repositorio.git)
+   git clone [https://github.com/tu-usuario/tu-repositorio.git](https://github.com/tu-usuario/tu-repositorio.git](https://github.com/FabianReyes02/EvaluacionIA1.git)
    cd EvaluacionIA1
