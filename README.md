@@ -25,5 +25,5 @@ Sigue estos pasos para configurar el entorno local:
 
 1. **Clonar el repositorio:**
    ```bash
-   git clone [https://github.com/tu-usuario/tu-repositorio.git](https://github.com/tu-usuario/tu-repositorio.git](https://github.com/FabianReyes02/EvaluacionIA1.git)
+   git clone (https://github.com/FabianReyes02/EvaluacionIA1.git)
    cd EvaluacionIA1
