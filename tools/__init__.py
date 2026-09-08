@@ -1,0 +1,1 @@
+"""Tools del agente: buscador de repuestos y validador de compatibilidad con el inventario."""

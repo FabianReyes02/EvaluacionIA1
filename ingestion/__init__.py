@@ -1,0 +1,1 @@
+"""Ingesta RAG: carga de manuales tecnicos (PDF) e inventario (CSV), chunking e indice."""

@@ -1,0 +1,1 @@
+"""Agente: orquestacion LLM con LangChain, prompts, busqueda RAG y trazabilidad."""

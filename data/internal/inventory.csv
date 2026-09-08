@@ -1,0 +1,13 @@
+codigo,descripcion,marca,categoria,vehiculos_compatibles,precio,stock
+ALT-01,Alternador 12V 90A,Bosch,Sistema electrico,Suzuki Swift 2014-2019; Kia Rio 4 2017-2021,289990,7
+ALT-02,Alternador 12V 110A,Bosch,Sistema electrico,Hyundai Accent 2012-2019,329990,4
+ALT-03,Alternador 12V 70A,Denso,Sistema electrico,Chevrolet Sail 2013-2019; Chevrolet Corsa 2005-2011,169990,12
+BAT-01,Bateria 660CCA 12V,Moura,Sistema electrico,Varios (ver manual),119990,25
+COR-01,Correa alternador 1.130mm,Gates,Sistema electrico,Suzuki Swift 2014-2019; Hyundai Accent 2012-2019,15990,40
+EMP-01,Kit embrague 200mm,Valeo,Transmision,Chevrolet Spark 2011-2019,219990,6
+EMP-02,Kit embrague 215mm,Valeo,Transmision,Hyundai Accent 2012-2019; Kia Rio 4 2017-2021,249990,9
+EMP-05,Kit embrague 190mm,Sachs,Transmision,Suzuki Swift 2014-2019,189990,5
+FRN-01,Juego pastillas freno delantero,TRW,Frenos,Kia Rio 4 2017-2021,44990,30
+FRN-02,Juego pastillas freno delantero,Brembo,Frenos,Hyundai Accent 2012-2019,49990,18
+FLT-01,Filtro de aceite 15600-44410,Mann,Servicio (mantencion),Suzuki Swift 2014-2019,7990,60
+FLT-02,Filtro de aire motor,Mann,Servicio (mantencion),Hyundai Accent 2012-2019; Kia Rio 4 2017-2021,12990,45
