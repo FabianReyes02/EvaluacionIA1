@@ -1,7 +1,7 @@
 # AVANCES — EvaluacionIA1 (Fase 0)
 
 **Proyecto:** Asistente de IA para Venta de Repuestos Automotrices (RAG)
-**Equipo:** Fabián Reyes — Caso: Repuestos Sur
+**Equipo:** Fabián Reyes Matías Vargas — Caso: Repuestos Sur
 **Última actualización:** 2026-09-08
 
 ## Lo que se hizo
@@ -80,3 +80,21 @@ EvaluacionIA1/
 - Los manuales técnicos y el inventario actuales son **datos de ejemplo
   simulados** (no son los datos reales de Repuestos Sur).
 - La primera ejecución del modelo de embeddings descarga ~470MB (una sola vez).
+
+## Actualización 2026-09-09 — MVP básico (main.py)
+- Se creó `.env` con la key de **Groq** (gratis; `LLM_PROVIDER=groq`,
+  `GROQ_MODEL=groq/compound-mini`). Se verificó el modelo contra la API de
+  Groq, ya que `llama-3.3-70b-versatile` no está disponible en esta cuenta.
+- Se agregó `main.py`: flujo básico por consola que pregunta **marca, modelo y
+  anio**, busca en `data/internal/inventory.csv` (interpreta rangos de anios
+  tipo "2014-2019" con regex) y responde con repuestos, precio, stock y
+  alerta si el stock es bajo.
+- El cliente LLM es intercambiable vía `LLM_PROVIDER` (OpenAI o Groq, con la
+  API de OpenAI). Si la llamada al LLM falla, cae a respuesta en texto plano.
+- Si no hay repuestos para el vehículo, responde directamente sin llamar al
+  LLM ("No se encontraron repuestos…") para evitar consultas innecesarias.
+- Se corrigió el encoding de consola Windows (stdout a UTF-8) porque el LLM
+  devuelve caracteres que cp1252 no puede imprimir.
+- Probado: `Suzuki Swift 2015/2018` → 4 repuestos con precio y stock;
+  `Toyota Corolla 2018` → mensaje de no encontrado.
+- Comando de uso: `uv run python main.py`
