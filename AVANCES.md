@@ -56,7 +56,11 @@ EvaluacionIA1/
 ## Lo que queda pendiente
 
 ### Inmediato (antes de la Fase 1)
-- [ ] Copiar `.env.example` a `.env` y pegar la `OPENAI_API_KEY` real.
+- [ ] Recrear `.env` desde `.env.example` (`.env` está gitignored y no está
+      presente en este checkout) y pegar la `GROQ_API_KEY` real (o
+      `OPENAI_API_KEY`).
+- [ ] Alinear `scripts/verify_env.py` con Groq (hoy solo valida
+      `OPENAI_API_KEY`); mientras tanto, validar con key de OpenAI.
 - [ ] `uv run python scripts/verify_env.py` para validar de punta a punta
       LLM, embeddings y ChromaDB (la primera ejecución descarga ~470MB del
       modelo de embeddings).
@@ -80,6 +84,9 @@ EvaluacionIA1/
 - Los manuales técnicos y el inventario actuales son **datos de ejemplo
   simulados** (no son los datos reales de Repuestos Sur).
 - La primera ejecución del modelo de embeddings descarga ~470MB (una sola vez).
+- `.env` no está presente en este checkout (gitignored), aunque la actualización
+  de 2026-09-09 registra su creación con key de Groq; debe recrearse localmente.
+- `scripts/verify_env.py` solo verifica `OPENAI_API_KEY`; aún no contempla Groq.
 
 ## Actualización 2026-09-09 — MVP básico (main.py)
 - Se creó `.env` con la key de **Groq** (gratis; `LLM_PROVIDER=groq`,

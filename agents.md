@@ -3,7 +3,7 @@
 **Proyecto:** EvaluacionIA1 (Asistente de IA para Venta de Repuestos Automotrices)
 **Curso:** ISY0101 Ingeniería de Soluciones con IA — Evaluación Parcial 1 (30%)
 **GitHub:** https://github.com/FabianReyes02/EvaluacionIA1
-**Última actualización:** 2026-09-08
+**Última actualización:** 2026-09-09
 
 > Memoria técnica del proyecto. Se actualiza en cada sesión para preservar
 > decisiones, tradeoffs y avance entre entregas. Sirve de bitácora para el
@@ -24,7 +24,7 @@
 
 | # | Decisión | Elección | Justificación | Alternativa descartada |
 |---|---|---|---|---|
-| D1 | Proveedor LLM | OpenAI (`gpt-4o-mini` default), Anthropic intercambiable vía `LLM_PROVIDER` en `.env` | Indicado en el README del proyecto; API madura y ampliamente documentada | Proveedor local sin API |
+| D1 | Proveedor LLM | OpenAI (`gpt-4o-mini`) o Groq (`groq/compound-mini`, gratis) intercambiable vía `LLM_PROVIDER` en `.env` (default actual: `groq`) | API OpenAI-compatible y ampliamente documentada; Groq sin costo para el prototipo. Anthropic documentado como alternativa, aún no implementado | Proveedor local sin API |
 | D2 | Embeddings | `paraphrase-multilingual-MiniLM-L12-v2` local (384d) | Contenido en español; costo 0 y privado | `all-MiniLM-L6-v2` (enfoque inglés) |
 | D3 | Vector store | **ChromaDB** persistente en `chroma_db/` sobre FAISS | Filtro nativo por metadata (`marca`, `categoria`, `tipo_fuente`); API simple. FAISS se documenta como alternativa del curso (RA1/IL1.3) | FAISS |
 | D4 | Chunking | Manuales PDF con `RecursiveCharacterTextSplitter`-style 500/50 (visto en RA1/IL1.3); entradas de inventario (CSV) completas por fila | Fragmentos de manual deben recuperarse íntegros para mantener especificaciones coherentes (compatibilidad, medidas) | Chunk grande genérico |
@@ -53,35 +53,37 @@ especialista. Dada una consulta (ej. «alternador para Suzuki Swift 2014»):
 encuentra en el inventario ni en los manuales información que respalde la
 compatibilidad → responde "no tengo información suficiente" en vez de
 improvisar. Repuesto en stock crítico (bajo o agotado) → alerta explícita.
-Implementado como guardrail en código (verificación post-LLM), no solo en el
-prompt.
+Se implementará en la Fase 4 como guardrail en código (verificación post-LLM),
+no solo en el prompt.
 
 ## 4. Estructura
 
 ```
 EvaluacionIA1/
 ├── data/
-│   ├── internal/inventory.csv      (inventario interno: codigo, marca, categoria,
+│   ├── internal/inventory.csv      ✓ (inventario interno: codigo, marca, categoria,
 │   │                                vehiculos compatibles, precio, stock)
-│   └── external/manuales/          (manuales técnicos .pdf por familia de repuesto)
-├── ingestion/ingest.py             carga PDF + CSV → chunk → embed → Chroma
+│   └── external/manuales/          ✓ (manuales técnicos .pdf por familia de repuesto)
+├── ingestion/ingest.py             (plan, Fase 1) carga PDF + CSV → chunk → embed → Chroma
 ├── agent/
-│   ├── llm_client.py               cliente LLM intercambiable (OpenAI default)
-│   ├── qa_chain.py                 chain RAG LangChain (recupera + responde)
-│   ├── prompts.py
-│   └── trace.py                    log JSONL de trazabilidad
+│   ├── llm_client.py               (plan, Fase 2) cliente LLM intercambiable (OpenAI/Groq)
+│   ├── qa_chain.py                 (plan, Fase 2) chain RAG LangChain (recupera + responde)
+│   ├── prompts.py                  (plan, Fase 2)
+│   └── trace.py                    (plan, Fase 3) log JSONL de trazabilidad
 ├── tools/
-│   ├── inventory_lookup.py         busca repuesto en inventory.csv (metadatos)
-│   └── compatibility_checker.py    valida vehículo/modelo vs especificaciones
-├── main.py                         CLI: consulta → repuesto con cita o alerta
+│   ├── inventory_lookup.py         (plan, Fase 3) busca repuesto en inventory.csv (metadatos)
+│   └── compatibility_checker.py    (plan, Fase 3) valida vehículo/modelo vs especificaciones
+├── main.py                         ✓ MVP CLI: marca/modelo/año → repuestos del CSV con
+│                                    precio, stock y alerta (aún sin RAG ni citas de manual)
 ├── tests/
-│   ├── eval_dataset.json           12-15 casos con resultado esperado
-│   └── eval_agent.py               corre evals y reporta % de aciertos
+│   ├── eval_dataset.json           (plan, Fase 5) 12-15 casos con resultado esperado
+│   └── eval_agent.py               (plan, Fase 5) corre evals y reporta % de aciertos
 ├── scripts/
-│   ├── verify_env.py               verifica OpenAI, embeddings, ChromaDB y datos
-│   └── generate_sample_data.py     genera inventory.csv + manuales PDF de ejemplo
-└── docs/                           informe y diagramas (Fase 6)
+│   ├── verify_env.py               ✓ (verifica datos y OpenAI; pendiente alinear con Groq)
+│   └── generate_sample_data.py     ✓ genera inventory.csv + manuales PDF de ejemplo
+└── docs/                           (plan, Fase 6) informe y diagramas
 ```
+(✓ = implementado; los demás archivos son plan de las Fases 1–6)
 
 ## 5. Plan de fases
 
@@ -89,6 +91,7 @@ EvaluacionIA1/
 - [ ] Fase 1 — Ingesta real (csv + pdf loaders), chunking e índice Chroma persistent
 - [ ] Fase 2 — llm_client.py + prompts + chain RAG base con citas
 - [ ] Fase 3 — Tools inventario/compatibilidad + main.py CLI + trace.jsonl
+      (adelanto parcial: `main.py` MVP ya existe, sin `tools/` ni trace)
 - [ ] Fase 4 — Guardrails de seguridad (negativa sin fuente, alertas de stock)
 - [ ] Fase 5 — Evals: 12-15 casos (≥3 alerta/negativa), meta ≥85% aciertos
 - [ ] Fase 6 — README completo + diagrama Mermaid + docs/informe
@@ -99,6 +102,12 @@ EvaluacionIA1/
   prototipo; NO son el inventario ni los manuales reales de Repuestos Sur.
   Documentar en README/informe.
 - `EmbeddingModel` local: primera ejecución descarga ~470MB (una sola vez).
+- `main.py` (MVP) solo cruza el inventario CSV; aún no recupera manuales PDF
+  (RAG = Fases 1–2) ni valida compatibilidad en profundidad ni cita fuentes.
+- `.env` está gitignored y no viaja en git: recrearlo desde `.env.example`
+  en cada checkout.
+- `verify_env.py` valida únicamente `OPENAI_API_KEY`; con `LLM_PROVIDER=groq`
+  el check del LLM aún no aplica (pendiente alinear).
 
 ## 7. Historial de decisiones
 
@@ -107,3 +116,9 @@ EvaluacionIA1/
   documentados como alternativas del curso. Guardrail de seguridad definido
   como código, no solo prompt. Scaffold completado (Fase 0) siguiendo la
   estructura de `ep1-veterinaria-agente`.
+- **2026-09-09** — MVP `main.py`: consola marca/modelo/año, búsqueda solo en
+  `inventory.csv` (rangos de años con regex), LLM intercambiable OpenAI/Groq vía
+  `LLM_PROVIDER` (se usa Groq `groq/compound-mini`, verificado contra su API),
+  fallback en texto plano sin IA y encoding UTF-8 para consola Windows. Se creó
+  `.env` con key de Groq (gitignored; en este checkout `.env` no está presente
+  y debe recrearse). Pendiente: alinear `verify_env.py` con Groq y Fases 1–6.
