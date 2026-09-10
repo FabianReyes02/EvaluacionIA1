@@ -1,4 +1,4 @@
-"""Verifica OPENAI_API_KEY, embeddings locales, ChromaDB y datos antes de correr el agente."""
+"""Verifica el LLM activo (OpenAI/Groq), embeddings locales, ChromaDB y datos antes de correr el agente."""
 import os
 import sys
 
@@ -12,6 +12,23 @@ EMBEDDING_MODEL = os.getenv(
     "EMBEDDING_MODEL",
     "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2",
 )
+
+LLM_CONFIG = {
+    "openai": {
+        "label": "OpenAI",
+        "base_url": None,
+        "key_env": "OPENAI_API_KEY",
+        "model_env": "OPENAI_MODEL",
+        "model_default": "gpt-4o-mini",
+    },
+    "groq": {
+        "label": "Groq",
+        "base_url": "https://api.groq.com/openai/v1",
+        "key_env": "GROQ_API_KEY",
+        "model_env": "GROQ_MODEL",
+        "model_default": "groq/compound-mini",
+    },
+}
 
 
 def _check_data_files() -> bool:
@@ -33,36 +50,49 @@ def _check_data_files() -> bool:
     return ok
 
 
-def main() -> int:
-    provider = os.getenv("LLM_PROVIDER", "openai")
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    print(f"LLM_PROVIDER={provider}")
-    print(f"OPENAI_MODEL={model}")
-    print(f"EMBEDDING_MODEL={EMBEDDING_MODEL}")
-
-    key = os.getenv("OPENAI_API_KEY", "")
-    print(f"OPENAI_API_KEY configurada: {bool(key)} (empieza con {key[:3] if key else '?'})")
-
-    if not _check_data_files():
-        return 1
+def _check_llm(provider: str) -> bool:
+    cfg = LLM_CONFIG[provider]
+    key = os.getenv(cfg["key_env"], "")
+    model = os.getenv(cfg["model_env"], cfg["model_default"])
+    print(f"{cfg['key_env']} configurada: {bool(key)} (empieza con {key[:3] if key else '?'})")
+    print(f"{cfg['model_env']}={model}")
 
     if not key:
-        print("✗ Falta OPENAI_API_KEY - copia .env.example a .env y edítala")
-        return 1
+        print(f"✗ Falta {cfg['key_env']} - copia .env.example a .env y edítala")
+        return False
 
     try:
         from openai import OpenAI
 
-        cliente = OpenAI()
+        if cfg["base_url"]:
+            cliente = OpenAI(api_key=key, base_url=cfg["base_url"])
+        else:
+            cliente = OpenAI(api_key=key)
         respuesta = cliente.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": "Responde solo: OK"}],
             max_completion_tokens=50,
         )
         contenido = respuesta.choices[0].message.content.strip()
-        print(f"✓ OpenAI responde ({model}): {contenido!r}")
+        print(f"✓ {cfg['label']} responde ({model}): {contenido!r}")
     except Exception as e:
-        print(f"✗ OpenAI error: {e}")
+        print(f"✗ {cfg['label']} error: {e}")
+        return False
+    return True
+
+
+def main() -> int:
+    provider = os.getenv("LLM_PROVIDER", "openai")
+    if provider not in LLM_CONFIG:
+        print(f"⚠ LLM_PROVIDER desconocido ({provider}), usando openai")
+        provider = "openai"
+    print(f"LLM_PROVIDER={provider}")
+    print(f"EMBEDDING_MODEL={EMBEDDING_MODEL}")
+
+    if not _check_data_files():
+        return 1
+
+    if not _check_llm(provider):
         return 1
 
     try:
@@ -91,7 +121,7 @@ def main() -> int:
         print(f"✗ ChromaDB error: {e}")
         return 1
 
-    print("Listo: OpenAI, embeddings, ChromaDB y datos de ejemplo funcionan correctamente")
+    print("Listo: LLM, embeddings, ChromaDB y datos de ejemplo funcionan correctamente")
     return 0
 
 

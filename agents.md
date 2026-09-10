@@ -79,9 +79,10 @@ EvaluacionIA1/
 │   ├── eval_dataset.json           (plan, Fase 5) 12-15 casos con resultado esperado
 │   └── eval_agent.py               (plan, Fase 5) corre evals y reporta % de aciertos
 ├── scripts/
-│   ├── verify_env.py               ✓ (verifica datos y OpenAI; pendiente alinear con Groq)
+│   ├── verify_env.py               ✓ (verifica datos y el LLM activo: OpenAI o Groq)
 │   └── generate_sample_data.py     ✓ genera inventory.csv + manuales PDF de ejemplo
-└── docs/                           (plan, Fase 6) informe y diagramas
+└── docs/
+    └── informe_EP1.md               (template del informe; diagrama final en Fase 6)
 ```
 (✓ = implementado; los demás archivos son plan de las Fases 1–6)
 
@@ -106,8 +107,9 @@ EvaluacionIA1/
   (RAG = Fases 1–2) ni valida compatibilidad en profundidad ni cita fuentes.
 - `.env` está gitignored y no viaja en git: recrearlo desde `.env.example`
   en cada checkout.
-- `verify_env.py` valida únicamente `OPENAI_API_KEY`; con `LLM_PROVIDER=groq`
-  el check del LLM aún no aplica (pendiente alinear).
+- `verify_env.py` validaba antes únicamente `OPENAI_API_KEY`; desde el
+  2026-09-09 valida el proveedor activo configurado en `LLM_PROVIDER`
+  (Groq o OpenAI), por lo que el check del LLM ya aplica con `LLM_PROVIDER=groq`.
 
 ## 7. Historial de decisiones
 
@@ -122,3 +124,8 @@ EvaluacionIA1/
   fallback en texto plano sin IA y encoding UTF-8 para consola Windows. Se creó
   `.env` con key de Groq (gitignored; en este checkout `.env` no está presente
   y debe recrearse). Pendiente: alinear `verify_env.py` con Groq y Fases 1–6.
+- **2026-09-09** — `verify_env.py` alineado con Groq: lee `LLM_PROVIDER` y
+  valida el proveedor activo (Groq con `GROQ_API_KEY` + base_url de Groq,
+  OpenAI como antes). Validado de punta a punta (Groq OK, embeddings 384d,
+  ChromaDB OK) y `main.py` probado (Suzuki Swift 2015 y Toyota Corolla 2018).
+  Con esto la Fase 0 queda completa y verificable.

@@ -56,7 +56,7 @@ Sigue estos pasos para configurar el entorno local:
    uv run python scripts/verify_env.py
    ```
    (Nota: `verify_env.py` valida datos, embeddings y ChromaDB; el check del LLM
-   usa `OPENAI_API_KEY` por ahora.)
+   usa la API key del proveedor activo según `LLM_PROVIDER`.)
 
 6. **Usar el asistente (MVP):**
    ```bash

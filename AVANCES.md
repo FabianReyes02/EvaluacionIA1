@@ -59,8 +59,9 @@ EvaluacionIA1/
 - [ ] Recrear `.env` desde `.env.example` (`.env` está gitignored y no está
       presente en este checkout) y pegar la `GROQ_API_KEY` real (o
       `OPENAI_API_KEY`).
-- [ ] Alinear `scripts/verify_env.py` con Groq (hoy solo valida
-      `OPENAI_API_KEY`); mientras tanto, validar con key de OpenAI.
+- [x] Alinear `scripts/verify_env.py` con Groq: ahora valida el LLM según
+      `LLM_PROVIDER` (Groq o OpenAI) y la verificación corre de punta a punta
+      (Groq OK, embeddings 384d, ChromaDB OK).
 - [ ] `uv run python scripts/verify_env.py` para validar de punta a punta
       LLM, embeddings y ChromaDB (la primera ejecución descarga ~470MB del
       modelo de embeddings).
@@ -86,7 +87,8 @@ EvaluacionIA1/
 - La primera ejecución del modelo de embeddings descarga ~470MB (una sola vez).
 - `.env` no está presente en este checkout (gitignored), aunque la actualización
   de 2026-09-09 registra su creación con key de Groq; debe recrearse localmente.
-- `scripts/verify_env.py` solo verifica `OPENAI_API_KEY`; aún no contempla Groq.
+- `scripts/verify_env.py` validaba antes solo `OPENAI_API_KEY`; desde el
+  2026-09-09 valida el proveedor activo (`LLM_PROVIDER`), incluido Groq.
 
 ## Actualización 2026-09-09 — MVP básico (main.py)
 - Se creó `.env` con la key de **Groq** (gratis; `LLM_PROVIDER=groq`,
@@ -105,3 +107,13 @@ EvaluacionIA1/
 - Probado: `Suzuki Swift 2015/2018` → 4 repuestos con precio y stock;
   `Toyota Corolla 2018` → mensaje de no encontrado.
 - Comando de uso: `uv run python main.py`
+
+## Actualización 2026-09-09 — verify_env.py alineado con Groq (Fase 0 listo)
+- `scripts/verify_env.py` ya no valida solo `OPENAI_API_KEY`: lee `LLM_PROVIDER`
+  y valida el proveedor activo (Groq usa `GROQ_API_KEY` + base_url de Groq;
+  OpenAI igual que antes). Con `LLM_PROVIDER=groq`, el check del LLM aplica.
+- Validado de punta a punta en este checkout:
+  `uv run python scripts/verify_env.py` → Groq responde "OK", embeddings
+  `dim=384`, ChromaDB recupera. También `uv run python main.py` (Suzuki Swift
+  2015 → 4 repuestos con precio/stock; Toyota Corolla 2018 → sin repuestos).
+- `.env` recreado localmente con `GROQ_API_KEY` (gitignored; no viaja en git).
