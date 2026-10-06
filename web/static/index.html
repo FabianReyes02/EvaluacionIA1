@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Repuestos Sur — Asistente IA</title>
+<style>
+  :root{
+    --bg:#f4f6f8; --card:#fff; --ink:#1d2733; --muted:#66768a;
+    --line:#e3e8ee; --brand:#0b5cff; --brand-d:#0846c4; --ok:#128a4b; --warn:#b8720a; --bad:#c0392b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{background:#101a2b;color:#fff;padding:14px 18px;display:flex;gap:12px;
+         align-items:baseline;flex-wrap:wrap}
+  header h1{margin:0;font-size:18px}
+  header .sub{color:#9db0cc;font-size:13px}
+  header .status{margin-left:auto;font-size:12px;background:#1c2b44;color:#cfe0ff;
+                 padding:4px 10px;border-radius:99px}
+  main{max-width:900px;margin:0 auto;padding:16px;display:grid;gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .card h2{margin:0 0 10px;font-size:14px;text-transform:uppercase;
+           letter-spacing:.4px;color:var(--muted)}
+  form.quick{display:grid;grid-template-columns:1fr 1fr 100px auto;gap:8px}
+  @media(max-width:640px){form.quick{grid-template-columns:1fr}}
+  input,button{font:inherit;padding:9px 10px;border-radius:8px;border:1px solid var(--line)}
+  input{background:#fbfcfe;width:100%}
+  input:focus{outline:2px solid #cfe0ff;border-color:var(--brand)}
+  button{background:var(--brand);color:#fff;border:0;cursor:pointer;font-weight:600}
+  button:hover{background:var(--brand-d)}
+  button.ghost{background:#eef2f7;color:var(--ink)}
+  #messages{max-height:340px;overflow-y:auto;display:flex;flex-direction:column;
+            gap:10px;padding:4px 2px}
+  .bubble{padding:9px 12px;border-radius:12px;white-space:pre-wrap;word-break:break-word;
+          border:1px solid var(--line)}
+  .user{background:#e8f0ff;border-color:#cfe0ff;align-self:flex-end;max-width:85%}
+  .bot{background:#fbfcfe;align-self:flex-start;max-width:95%}
+  .meta{font-size:12px;color:var(--muted);margin-top:6px;border-top:1px dashed var(--line);
+        padding-top:5px}
+  .meta .tool{background:#eef2f7;border-radius:6px;padding:1px 6px;margin-right:5px}
+  .guard{color:var(--bad);font-weight:600}
+  form.chat{display:flex;gap:8px;margin-top:10px}
+  form.chat input{flex:1}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--muted);font-weight:600;font-size:12px}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700}
+  .ok{background:#e4f6ec;color:var(--ok)}
+  .warn{background:#fdf2df;color:var(--warn)}
+  .bad{background:#fdeae7;color:var(--bad)}
+  .hint{font-size:12px;color:var(--muted);margin-top:8px}
+</style>
+</head>
+<body>
+<header>
+  <h1>🚗 Repuestos Sur</h1>
+  <span class="sub">Asistente IA de repuestos automotrices</span>
+  <span id="status" class="status">verificando…</span>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Búsqueda rápida</h2>
+    <form class="quick" id="quickForm">
+      <input id="marca" placeholder="Marca (Suzuki)" autocomplete="off">
+      <input id="modelo" placeholder="Modelo (Swift)" autocomplete="off">
+      <input id="anio" placeholder="Año (2015)" inputmode="numeric" autocomplete="off">
+      <button type="submit">Buscar repuestos</button>
+    </form>
+    <p class="hint">También puedes escribirle libre al asistente: «necesito un alternador para un Accent 2016»,
+      «¿qué especificaciones tiene el ALT-01?» o «guarda que mi auto es un Swift 2015».</p>
+  </section>
+
+  <section class="card">
+    <h2>Chat con el agente</h2>
+    <div id="messages"></div>
+    <form class="chat" id="chatForm">
+      <input id="input" placeholder="Escribe tu consulta…" autocomplete="off">
+      <button type="submit" id="send">Enviar</button>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Inventario <span id="count"></span></h2>
+    <div style="overflow-x:auto">
+      <table>
+        <thead>
+          <tr><th>Código</th><th>Descripción</th><th>Marca</th>
+              <th>Categoría</th><th>Vehículos compatibles</th><th>Precio</th><th>Stock</th></tr>
+        </thead>
+        <tbody id="parts"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+const SESSION = localStorage.getItem("rs_session") ||
+                ("web-" + Math.random().toString(36).slice(2, 8));
+localStorage.setItem("rs_session", SESSION);
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+// Formateo minimo: saltos de linea y negritas **texto**.
+const fmt = (s) => esc(s).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>");
+
+function addBubble(cls, html, meta) {
+  const div = document.createElement("div");
+  div.className = "bubble " + cls;
+  div.innerHTML = html + (meta ? `<div class="meta">${meta}</div>` : "");
+  $("messages").appendChild(div);
+  div.scrollIntoView({block:"end"});
+  return div;
+}
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+  return data;
+}
+
+async function send(text) {
+  if (!text.trim()) return;
+  addBubble("user", fmt(text.trim()));
+  $("input").value = "";
+  $("send").disabled = true;
+  const thinking = addBubble("bot", "Pensando…");
+  try {
+    const r = await api("/api/chat", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message: text.trim(), session: SESSION})
+    });
+    let meta = "";
+    const tools = [...new Set((r.plan || []).map(s => s.tool).filter(Boolean))];
+    if (tools.length) meta += "🛠 herramientas: " + tools.map(t => `<span class="tool">${esc(t)}</span>`).join(" ");
+    if (r.tokens) meta += `${meta ? " · " : ""}tokens: ${r.tokens.total}`;
+    if (!r.used_llm) meta = `${meta ? meta + " · " : ""}modo sin IA (fallback local)`;
+    if ((r.guardrails || []).length)
+      meta += `<br><span class="guard">⚠ guardrails: ${esc(r.guardrails.join(", "))}</span>`;
+    thinking.innerHTML = fmt(r.respuesta) + (meta ? `<div class="meta">${meta}</div>` : "");
+  } catch (e) {
+    thinking.innerHTML = `<span class="guard">Error: ${esc(e.message)}</span>`;
+  } finally {
+    $("send").disabled = false;
+    $("input").focus();
+  }
+}
+
+$("chatForm").addEventListener("submit", e => { e.preventDefault(); send($("input").value); });
+
+$("quickForm").addEventListener("submit", e => {
+  e.preventDefault();
+  const m = $("marca").value.trim(), mo = $("modelo").value.trim(), a = $("anio").value.trim();
+  if (!m || !mo || !a) { alert("Completa marca, modelo y año."); return; }
+  send(`Necesito repuestos para un ${m} ${mo} ${a}`);
+});
+
+async function loadHealth() {
+  try {
+    const h = await api("/api/health");
+    $("status").textContent = h.llm_disponible
+      ? `IA: ${h.proveedor} · ${h.modelo}`
+      : "modo sin IA (sin API key)";
+    const c = h.indice && h.indice.colecciones ? h.indice.colecciones : {};
+    const idx = Object.entries(c).map(([k,v]) => `${k}: ${v}`).join(" · ");
+    if (idx) $("status").title = `herramientas: ${h.herramientas.join(", ")}\níndice: ${idx}`;
+  } catch (e) { $("status").textContent = "sin conexión"; }
+}
+
+async function loadParts() {
+  try {
+    const d = await api("/api/inventory");
+    $("count").textContent = "(" + d.parts.length + ")";
+    $("parts").innerHTML = d.parts.map(p => {
+      const s = Number(p.stock);
+      const cls = s <= 0 ? "bad" : (s < 5 ? "warn" : "ok");
+      const txt = s <= 0 ? "agotado" : (s < 5 ? `bajo (${s})` : s);
+      return `<tr><td><b>${esc(p.codigo)}</b></td><td>${esc(p.descripcion)}</td>
+        <td>${esc(p.marca)}</td><td>${esc(p.categoria)}</td>
+        <td>${esc(p.vehiculos_compatibles)}</td>
+        <td>$${esc(p.precio)}</td><td><span class="pill ${cls}">${txt}</span></td></tr>`;
+    }).join("");
+  } catch (e) { $("count").textContent = "(sin datos)"; }
+}
+
+loadHealth();
+loadParts();
+addBubble("bot", "¡Hola! Soy el asistente de **Repuestos Sur**. Dime marca, modelo y año de tu auto " +
+  "o el repuesto que buscas y reviso el inventario y los manuales técnicos.");
+$("input").focus();
+</script>
+</body>
+</html>

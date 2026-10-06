@@ -1,0 +1,182 @@
+{
+  "meta": {
+    "nombre": "Evaluacion del agente Repuestos Sur",
+    "version": "1.0",
+    "meta_aciertos": 85,
+    "descripcion": "15 casos que cubren busqueda, validacion, guardrails, RAG sobre manuales, escritura y memoria (corto y largo plazo). El caso C14 depende de que C13 se haya ejecutado antes: prueba la memoria entre sesiones."
+  },
+  "casos": [
+    {
+      "id": "C01",
+      "tipo": "busqueda",
+      "descripcion": "Busqueda normal con marca, modelo y anio correctos",
+      "entradas": ["Necesito un alternador para un Suzuki Swift 2015"],
+      "esperado": {
+        "usa_llm": true,
+        "debe_usar_tool": ["buscar_repuesto"],
+        "debe_contener": ["ALT-01"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Debe recuperar el repuesto real del CSV citando su codigo (IE1)."
+    },
+    {
+      "id": "C02",
+      "tipo": "busqueda",
+      "descripcion": "Busqueda filtrada por tipo de repuesto",
+      "entradas": ["¿Cuánto cuesta el filtro de aceite para un Hyundai Accent 2016?"],
+      "esperado": {
+        "debe_contener": ["FLT-02"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Filtra por tipo de pieza dentro del inventario compatible."
+    },
+    {
+      "id": "C03",
+      "tipo": "validacion",
+      "descripcion": "El cliente no entrega marca, modelo ni anio",
+      "entradas": ["Quiero un repuesto para mi auto"],
+      "esperado": {
+        "debe_contener_any": ["marca", "Marca", "modelo", "Modelo", "año", "anio"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Fase de validacion: pide los datos obligatorios antes de buscar (IE5/IE6)."
+    },
+    {
+      "id": "C04",
+      "tipo": "validacion",
+      "descripcion": "Anio fuera de rango",
+      "entradas": ["Repuestos para un Suzuki Swift 1800"],
+      "esperado": {
+        "debe_contener_any": ["1800", "año", "anio", "válido", "valido"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Detecta un anio imposible y explica el problema sin inventar."
+    },
+    {
+      "id": "C05",
+      "tipo": "negativa",
+      "descripcion": "Marca que no existe en el inventario",
+      "entradas": ["Necesito repuestos para un Ferrari 488 2020"],
+      "esperado": {
+        "debe_contener_any": ["Ferrari"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Regla no negociable: niega sin inventar repuestos ni codigos."
+    },
+    {
+      "id": "C06",
+      "tipo": "negativa",
+      "descripcion": "Modelo inexistente para una marca valida",
+      "entradas": ["¿Tienen un repuesto para un Suzuki Corolla 2015?"],
+      "esperado": {
+        "debe_contener_any": ["Corolla"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Diagnostica que el problema es el modelo, no la marca."
+    },
+    {
+      "id": "C07",
+      "tipo": "alerta_stock",
+      "descripcion": "Repuesto con stock critico (ALT-02, stock 4)",
+      "entradas": ["Necesito un alternador para un Hyundai Accent 2016"],
+      "esperado": {
+        "debe_contener": ["ALT-02"],
+        "debe_contener_any": ["STOCK BAJO", "stock bajo", "quedan", "pocas"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Alerta explicita de stock critico, exigida por el encargo (Fase 4)."
+    },
+    {
+      "id": "C08",
+      "tipo": "fuera_de_contexto",
+      "descripcion": "Pregunta ajena al negocio",
+      "entradas": ["¿Cuál es la capital de Francia?"],
+      "esperado": {
+        "debe_contener_any": ["repuesto", "Repuesto", "vehículo", "vehiculo", "tienda"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Se mantiene en el rol y redirige al tema (IE5/IE6)."
+    },
+    {
+      "id": "C09",
+      "tipo": "rag_manual",
+      "descripcion": "Consulta tecnica que solo esta en el manual PDF",
+      "entradas": ["¿Qué amperaje tiene el alternador de 90A según el manual técnico?"],
+      "esperado": {
+        "debe_usar_tool": ["buscar_en_manual"],
+        "debe_contener": ["90A"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "RAG sobre manuales con cita de la fuente (IE1/IE2)."
+    },
+    {
+      "id": "C10",
+      "tipo": "compatibilidad",
+      "descripcion": "Verificacion de compatibilidad de un codigo puntual",
+      "entradas": ["¿El kit embrague EMP-02 sirve para un Kia Rio 4 2018?"],
+      "esperado": {
+        "debe_contener": ["EMP-02"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Cruza el repuesto con el vehiculo usando la fuente interna."
+    },
+    {
+      "id": "C11",
+      "tipo": "guardrail",
+      "descripcion": "El cliente pregunta por un codigo inexistente",
+      "entradas": ["¿Tienen el repuesto XYZ-99 en stock?"],
+      "esperado": {
+        "guardrails": ["codigo_inexistente"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "El guardrail post-LLM marca el codigo que no existe en el CSV."
+    },
+    {
+      "id": "C12",
+      "tipo": "escritura",
+      "descripcion": "El cliente pide cotizar y el sistema escribe un archivo",
+      "entradas": ["Cotiza el alternador ALT-01 y el filtro FLT-01 por favor"],
+      "esperado": {
+        "debe_usar_tool": ["exportar_cotizacion"],
+        "genera_archivo": true,
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Tool de ESCRITURA real: genera data/exports/cotizacion_*.json."
+    },
+    {
+      "id": "C13",
+      "tipo": "memoria_escritura",
+      "descripcion": "El cliente entrega un dato que debe recordarse",
+      "entradas": ["Guarda en tu memoria que mi auto es un Suzuki Swift 2015"],
+      "session": "eval-memoria",
+      "esperado": {
+        "debe_usar_tool": ["recordar_dato"],
+        "memoria_crece": true,
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Escritura en memoria de LARGO PLAZO (IE3/IE4)."
+    },
+    {
+      "id": "C14",
+      "tipo": "memoria_lectura",
+      "descripcion": "En una SESION NUEVA pide un dato guardado en la anterior",
+      "entradas": ["¿Sabes qué vehículo tengo?"],
+      "session": "eval-memoria-2",
+      "esperado": {
+        "debe_contener": ["Swift"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Recuperacion de contexto entre sesiones: memoria persistente (IE3/IE4)."
+    },
+    {
+      "id": "C15",
+      "tipo": "conversacional",
+      "descripcion": "Saludo social sin intencion de compra",
+      "entradas": ["Hola, ¿cómo estás?"],
+      "esperado": {
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Respuesta cortes sin llamar herramientas ni inventar datos."
+    }
+  ]
+}

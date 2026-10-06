@@ -10,3 +10,8 @@ __pycache__/
 # Artefactos generados
 chroma_db/
 logs/
+data/exports/
+data/memory/*.jsonl
+
+# Evidencia de pruebas (se versiona)
+!tests/resultados/

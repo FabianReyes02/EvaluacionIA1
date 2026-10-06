@@ -1,8 +1,10 @@
-"""Verifica el LLM activo (OpenAI/Groq), embeddings locales, ChromaDB y datos antes de correr el agente."""
+"""Verifica el LLM activo (OpenAI/Groq), tool-calling, el agente, embeddings locales, ChromaDB y datos."""
 import os
 import sys
+from pathlib import Path
 
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dotenv import load_dotenv
 
@@ -26,7 +28,8 @@ LLM_CONFIG = {
         "base_url": "https://api.groq.com/openai/v1",
         "key_env": "GROQ_API_KEY",
         "model_env": "GROQ_MODEL",
-        "model_default": "groq/compound-mini",
+        # Verificado: soporta tool-calling (groq/compound-mini ya no existe).
+        "model_default": "qwen/qwen3.8-27b",
     },
 }
 
@@ -71,7 +74,7 @@ def _check_llm(provider: str) -> bool:
         respuesta = cliente.chat.completions.create(
             model=model,
             messages=[{"role": "user", "content": "Responde solo: OK"}],
-            max_completion_tokens=50,
+            max_tokens=50,
         )
         contenido = respuesta.choices[0].message.content.strip()
         print(f"✓ {cfg['label']} responde ({model}): {contenido!r}")
@@ -79,6 +82,59 @@ def _check_llm(provider: str) -> bool:
         print(f"✗ {cfg['label']} error: {e}")
         return False
     return True
+
+
+def _check_tool_calling(provider: str) -> bool:
+    """El agente necesita un modelo que emita tool_calls: lo verifica en vivo."""
+    cfg = LLM_CONFIG[provider]
+    key = os.getenv(cfg["key_env"], "")
+    if not key:
+        return False
+    model = os.getenv(cfg["model_env"], cfg["model_default"])
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "buscar_repuesto",
+                "description": "Busca repuestos en el inventario",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "marca": {"type": "string"},
+                        "modelo": {"type": "string"},
+                        "anio": {"type": "string"},
+                    },
+                    "required": ["marca", "modelo", "anio"],
+                },
+            },
+        }
+    ]
+    try:
+        from openai import OpenAI
+
+        if cfg["base_url"]:
+            cliente = OpenAI(api_key=key, base_url=cfg["base_url"])
+        else:
+            cliente = OpenAI(api_key=key)
+        r = cliente.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "Busca repuestos para Suzuki Swift 2015"}],
+            tools=tools,
+            tool_choice="required",
+            # max_tokens acotado: algunos modelos calculan salidas enormes con
+            # tool_choice=required y el plan gratuito de Groq limita a 1000 OTPM.
+            max_tokens=200,
+        )
+        calls = r.choices[0].message.tool_calls or []
+        if not calls:
+            print(f"✗ {model} NO emite tool_calls: el agente no puede funcionar")
+            return False
+        print(f"✓ {model} emite tool_calls: {calls[0].function.name}")
+        return True
+    except Exception as e:
+        print(f"✗ Tool-calling no disponible en {model}: {e}")
+        print("  Cambia GROQ_MODEL en .env (ej: qwen/qwen3.8-27b u openai/gpt-oss-20b)")
+        return False
 
 
 def main() -> int:
@@ -93,6 +149,24 @@ def main() -> int:
         return 1
 
     if not _check_llm(provider):
+        return 1
+
+    if not _check_tool_calling(provider):
+        return 1
+
+    try:
+        print("[..] Construyendo el agente LangChain...")
+        from agent.agent import build_agent
+
+        if build_agent() is None:
+            print("✗ No se pudo construir el agente (sin API key)")
+            return 1
+        from agent.tools import ALL_TOOLS
+
+        print(f"✓ Agente OK con {len(ALL_TOOLS)} herramientas: "
+              f"{', '.join(t.name for t in ALL_TOOLS)}")
+    except Exception as e:
+        print(f"✗ Agente error: {e}")
         return 1
 
     try:

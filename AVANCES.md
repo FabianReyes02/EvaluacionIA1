@@ -2,7 +2,7 @@
 
 **Proyecto:** Asistente de IA para Venta de Repuestos Automotrices (RAG)
 **Equipo:** Fabián Reyes Matías Vargas — Caso: Repuestos Sur
-**Última actualización:** 2026-09-08
+**Última actualización:** 2026-10-06
 
 ## Lo que se hizo
 
@@ -117,3 +117,74 @@ EvaluacionIA1/
   `dim=384`, ChromaDB recupera. También `uv run python main.py` (Suzuki Swift
   2015 → 4 repuestos con precio/stock; Toyota Corolla 2018 → sin repuestos).
 - `.env` recreado localmente con `GROQ_API_KEY` (gitignored; no viaja en git).
+
+## Actualización 2026-10-06 — Evaluación 2: agente, memoria, interfaz y evals
+
+### Entorno
+- Se creó `.venv` con Python 3.13 e instalaron con `pip` (uv no estaba
+  disponible en esta máquina): `langchain 1.4.3`, `langchain-openai`,
+  `chromadb 1.5.9`, `sentence-transformers 6.1`, `pypdf`, `python-dotenv`.
+  Dependencias congeladas en `requirements.txt` (132 paquetes).
+- `pyproject.toml` actualizado a lo realmente usado (se quitaron `pandas` y
+  `langchain-community` que no se importaban; se agregaron `langchain-openai`
+  y `pypdf`).
+
+### ⚠️ Hallazgo: el modelo configurado ya no existía
+- `groq/compound-mini` respondía **404 "model does not exist"**. Se listaron
+  los modelos de la cuenta y se probaron con `tool_choice="required"`:
+  - `qwen/qwen3.8-27b` ✅ y `openai/gpt-oss-20b` ✅ emitían tool_calls.
+  - `openai/gpt-oss-120b` ❌ no llamó tools; `allam-2-7b` ❌ "tool calling is
+    not supported".
+- Se eligió **`qwen/qwen3.8-27b`** (elegía la tool correcta con argumentos
+  precisos en la comparación de 4 escenarios). Cambio aplicado en `.env` y
+  `.env.example`. `verify_env.py` ahora lo valida en cada corrida.
+
+### Fase 1 — Ingesta RAG (completada)
+- `agent/rag.py`: PDF → `RecursiveCharacterTextSplitter` 500/50 → embeddings
+  locales → ChromaDB en `chroma_db/`. Colecciones `manuales` (3 fragmentos) e
+  `inventario` (12 filas, completas por fila).
+- `ingestion/ingest.py` (`--force`, `--stats`).
+
+### Fases 2–4 — Agente, memoria y guardrails (completadas)
+- `agent/agent.py`: `create_agent` de LangChain con 6 tools; loop
+  plan → tool → observación → respuesta, con traza de pasos.
+- `agent/tools.py`: `buscar_repuesto`, `buscar_en_manual`,
+  `verificar_compatibilidad` (consulta) / `recordar_dato`,
+  `exportar_cotizacion` (escritura) / `recuperar_memoria` (lectura).
+- `agent/memory.py`: corto plazo (ventana de 10 turnos por sesión) y largo
+  plazo (`data/memory/memoria.jsonl` + colección Chroma, recuperación
+  semántica).
+- `agent/guardrails.py` (post-LLM): códigos inexistentes → `no verificado` +
+  aviso; stock <5 o agotado sin alerta → alerta agregada. Ignora los listados
+  de catálogo (3+ códigos en la misma línea) para no generar falsos positivos.
+- `agent/trace.py`: `logs/trace.jsonl` con entrada, plan, salida, tokens y
+  guardrails.
+- `main.py` refactorizado para importar `tools/inventory_lookup.py`,
+  `agent/llm_client.py` y `agent/prompts.py` (sin duplicar lógica); la CLI
+  sigue funcionando igual.
+
+### Fase 6 — Interfaz web (completada)
+- `web/server.py` (`http.server`, sin frameworks) + `web/static/index.html`
+  (un solo archivo): búsqueda rápida marca/modelo/año, chat multi-turno con
+  historial, tabla del inventario con alertas de stock y barra de estado del
+  LLM. API: `GET /api/health`, `GET /api/inventory`, `POST /api/chat`,
+  `POST /api/reset`.
+
+### Fase 5 — Evals y evidencia (completada)
+- `tests/eval_dataset.json`: 15 casos con criterios automáticos y
+  justificación; `tests/eval_agent.py` genera
+  `tests/resultados/eval_reporte.{md,json}`.
+- **Resultado: 15/15 (100 %)** con meta ≥85 % (~46 500 tokens).
+- Dos iteraciones de corrección que dejaron arreglo real:
+  1. La memoria de largo plazo "contaminaba" los tests (el agente ya sabía el
+     vehículo, así que no lo pedía ni lo volvía a guardar) → los tests ahora
+     usan memoria aislada (`MEMORIA_FILE` / `MEMORIA_COLLECTION`).
+  2. El agente **decía haber guardado un dato sin llamar `recordar_dato`** y
+     pedía el vehículo para consultas de manual → se reforzó el system prompt
+     (reglas 5 y 8) y se bajó la temperatura del loop a 0.1.
+
+### Docs
+- `README.md` reescrito con instrucciones precisas de ejecución, estructura,
+  herramientas, reglas de seguridad, configuración, resultados de pruebas y
+  referencias APA.
+- `.gitignore`: ahora ignora `data/exports/` y `data/memory/*.jsonl`.

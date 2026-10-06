@@ -1,0 +1,356 @@
+{
+  "fecha": "2026-10-06T17:05:35",
+  "meta": 85,
+  "aprobados": 15,
+  "total": 15,
+  "porcentaje": 100.0,
+  "tokens": 46541,
+  "resultados": [
+    {
+      "id": "C01",
+      "tipo": "busqueda",
+      "descripcion": "Busqueda normal con marca, modelo y anio correctos",
+      "entradas": [
+        "Necesito un alternador para un Suzuki Swift 2015"
+      ],
+      "session": "eval-C01",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Debe recuperar el repuesto real del CSV citando su codigo (IE1).",
+      "herramientas": [
+        "buscar_repuesto"
+      ],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 4111,
+        "completion": 177,
+        "total": 4288
+      },
+      "duracion_s": 25.8,
+      "respuesta": "Para tu Suzuki Swift 2015 encontré:\n\n[ALT-01] Alternador 12V 90A - $289.990 - Stock: 7 unidades.\n\nAdemás, si la necesitas, hay [COR-01] Correa para alternador 1.130mm - $15.990 - Stock: 40 unidades.\n\n¿Quieres que te cotice alguno o necesitas más detalles técnicos del alternador?"
+    },
+    {
+      "id": "C02",
+      "tipo": "busqueda",
+      "descripcion": "Busqueda filtrada por tipo de repuesto",
+      "entradas": [
+        "¿Cuánto cuesta el filtro de aceite para un Hyundai Accent 2016?"
+      ],
+      "session": "eval-C02",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Filtra por tipo de pieza dentro del inventario compatible.",
+      "herramientas": [
+        "buscar_repuesto"
+      ],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 4083,
+        "completion": 174,
+        "total": 4257
+      },
+      "duracion_s": 34.4,
+      "respuesta": "Para tu Hyundai Accent 2016 encontré 1 repuesto:\n\n[FLT-02] Filtro de aire motor - $12.990 - Stock: 45 unidades.\n\nOjo: el inventario trae un filtro de aire, no de aceite. No tengo registrado un filtro de aceite para ese vehículo, así que no puedo darte precio ni stock de ese. ¿Quieres que busque otro tipo de repuesto o que revise el manual técnico?"
+    },
+    {
+      "id": "C03",
+      "tipo": "validacion",
+      "descripcion": "El cliente no entrega marca, modelo ni anio",
+      "entradas": [
+        "Quiero un repuesto para mi auto"
+      ],
+      "session": "eval-C03",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Fase de validacion: pide los datos obligatorios antes de buscar (IE5/IE6).",
+      "herramientas": [],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 1966,
+        "completion": 49,
+        "total": 2015
+      },
+      "duracion_s": 16.7,
+      "respuesta": "¡Hola! Con gusto te ayudo. Para buscar el repuesto correcto necesito saber:\n\n- Marca, modelo y año de tu auto\n- Qué repuesto necesitas (o qué falla tiene)\n\n¿Me los pasas?"
+    },
+    {
+      "id": "C04",
+      "tipo": "validacion",
+      "descripcion": "Anio fuera de rango",
+      "entradas": [
+        "Repuestos para un Suzuki Swift 1800"
+      ],
+      "session": "eval-C04",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Detecta un anio imposible y explica el problema sin inventar.",
+      "herramientas": [],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 1969,
+        "completion": 75,
+        "total": 2044
+      },
+      "duracion_s": 17.8,
+      "respuesta": "¡Hola! Para buscar repuestos compatibles necesito el **año** de tu Suzuki Swift (el inventario cubre 2014 a 2019).\n\n¿De qué año es? También dime si buscas alguna pieza en particular (alternador, frenos, embrague, filtros, etc.) o si quieres ver todo lo disponible."
+    },
+    {
+      "id": "C05",
+      "tipo": "negativa",
+      "descripcion": "Marca que no existe en el inventario",
+      "entradas": [
+        "Necesito repuestos para un Ferrari 488 2020"
+      ],
+      "session": "eval-C05",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Regla no negociable: niega sin inventar repuestos ni codigos.",
+      "herramientas": [],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 1975,
+        "completion": 139,
+        "total": 2114
+      },
+      "duracion_s": 16.9,
+      "respuesta": "No cuento con repuestos para Ferrari 488 2020. Nuestro inventario cubre solo estos vehículos:\n\n- Suzuki Swift 2014-2019\n- Kia Rio 4 2017-2021\n- Hyundai Accent 2012-2019\n- Chevrolet Sail 2013-2019\n- Chevrolet Corsa 2005-2011\n- Chevrolet Spark 2011-2019\n\nSi tienes alguno de estos modelos, con gusto te busco el repuesto que necesites. ¿Qué pieza estás buscando?"
+    },
+    {
+      "id": "C06",
+      "tipo": "negativa",
+      "descripcion": "Modelo inexistente para una marca valida",
+      "entradas": [
+        "¿Tienen un repuesto para un Suzuki Corolla 2015?"
+      ],
+      "session": "eval-C06",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Diagnostica que el problema es el modelo, no la marca.",
+      "herramientas": [],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 1975,
+        "completion": 109,
+        "total": 2084
+      },
+      "duracion_s": 16.9,
+      "respuesta": "No tengo un \"Suzuki Corolla\" en nuestro catálogo. El Corolla es de Toyota, y Suzuki Swift sí lo manejamos (2014-2019).\n\n¿Podrías confirmarme la marca y modelo exactos? Por ejemplo:\n- ¿Es un **Suzuki Swift 2015**?\n- ¿O un **Toyota Corolla 2015** (que no está en nuestro inventario)?\n\nCon eso te busco el repuesto que necesitas."
+    },
+    {
+      "id": "C07",
+      "tipo": "alerta_stock",
+      "descripcion": "Repuesto con stock critico (ALT-02, stock 4)",
+      "entradas": [
+        "Necesito un alternador para un Hyundai Accent 2016"
+      ],
+      "session": "eval-C07",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Alerta explicita de stock critico, exigida por el encargo (Fase 4).",
+      "herramientas": [
+        "buscar_repuesto"
+      ],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 4132,
+        "completion": 188,
+        "total": 4320
+      },
+      "duracion_s": 35.9,
+      "respuesta": "Para tu Hyundai Accent 2016 encontré:\n\n[ALT-02] Alternador 12V 110A - $329.990 - Stock: 4 unidades (STOCK BAJO, quedan menos de 5).\n\nTambién tengo la correa del alternador por si la necesitas:\n[COR-01] Correa alternador 1.130mm - $15.990 - Stock: 40 unidades.\n\n¿Quieres que te cotice alguno o ambos?"
+    },
+    {
+      "id": "C08",
+      "tipo": "fuera_de_contexto",
+      "descripcion": "Pregunta ajena al negocio",
+      "entradas": [
+        "¿Cuál es la capital de Francia?"
+      ],
+      "session": "eval-C08",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Se mantiene en el rol y redirige al tema (IE5/IE6).",
+      "herramientas": [],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 1966,
+        "completion": 64,
+        "total": 2030
+      },
+      "duracion_s": 16.2,
+      "respuesta": "¡Hola! Solo puedo ayudarte con repuestos y vehículos. Para tu consulta sobre la capital de Francia, te sugiero consultar una enciclopedia.\n\n¿En qué puedo ayudarte con los repuestos de tu auto? Si me dices marca, modelo y año, puedo buscar el repuesto que necesites."
+    },
+    {
+      "id": "C09",
+      "tipo": "rag_manual",
+      "descripcion": "Consulta tecnica que solo esta en el manual PDF",
+      "entradas": [
+        "¿Qué amperaje tiene el alternador de 90A según el manual técnico?"
+      ],
+      "session": "eval-C09",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "RAG sobre manuales con cita de la fuente (IE1/IE2).",
+      "herramientas": [
+        "buscar_en_manual"
+      ],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 4499,
+        "completion": 213,
+        "total": 4712
+      },
+      "duracion_s": 43.6,
+      "respuesta": "Según el manual técnico (manual_alternador.pdf, pág. 1), el alternador de 90A tiene estas especificaciones:\n\n- Corriente nominal: 90A\n- Voltaje nominal: 14V\n- Poles: 12\n- Polea compatible: correas de 5 y 6 canales según motor\n- Conexión de 3 cables: B+ (salida principal), D+ (luz de carga) y W (tacómetro)\n\nEs apto para motores de 1000 a 1500 cc. ¿Quieres que te busque el precio y stock para algún vehículo en particular?"
+    },
+    {
+      "id": "C10",
+      "tipo": "compatibilidad",
+      "descripcion": "Verificacion de compatibilidad de un codigo puntual",
+      "entradas": [
+        "¿El kit embrague EMP-02 sirve para un Kia Rio 4 2018?"
+      ],
+      "session": "eval-C10",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Cruza el repuesto con el vehiculo usando la fuente interna.",
+      "herramientas": [
+        "verificar_compatibilidad"
+      ],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 4108,
+        "completion": 157,
+        "total": 4265
+      },
+      "duracion_s": 30.0,
+      "respuesta": "Sí, el [EMP-02] Kit embrague 215mm es compatible con tu Kia Rio 4 2018.\n\nDetalles:\n- Precio: $249.990\n- Stock: 9 unidades\n- Compatibilidad registrada: Hyundai Accent 2012-2019 y Kia Rio 4 2017-2021\n\n¿Quieres que te lo cotice o necesitas ayuda con la instalación?"
+    },
+    {
+      "id": "C11",
+      "tipo": "guardrail",
+      "descripcion": "El cliente pregunta por un codigo inexistente",
+      "entradas": [
+        "¿Tienen el repuesto XYZ-99 en stock?"
+      ],
+      "session": "eval-C11",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "El guardrail post-LLM marca el codigo que no existe en el CSV.",
+      "herramientas": [],
+      "guardrails": [
+        "codigo_inexistente:XYZ-99"
+      ],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 1971,
+        "completion": 53,
+        "total": 2024
+      },
+      "duracion_s": 18.2,
+      "respuesta": "No tengo información sobre un repuesto con código XYZ-99 (no verificado) en nuestro inventario. Para ayudarte, ¿podrías indicarme la marca, modelo y año de tu vehículo, y qué tipo de repuesto necesitas? Así puedo buscar las opciones disponibles.\n\n[Guardrail] No puedo confirmar el repuesto XYZ-99: no existe en el inventario de la tienda."
+    },
+    {
+      "id": "C12",
+      "tipo": "escritura",
+      "descripcion": "El cliente pide cotizar y el sistema escribe un archivo",
+      "entradas": [
+        "Cotiza el alternador ALT-01 y el filtro FLT-01 por favor"
+      ],
+      "session": "eval-C12",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Tool de ESCRITURA real: genera data/exports/cotizacion_*.json.",
+      "herramientas": [
+        "exportar_cotizacion"
+      ],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 4076,
+        "completion": 136,
+        "total": 4212
+      },
+      "duracion_s": 33.4,
+      "respuesta": "Listo, cotización guardada con 2 ítems por un total de $297.980:\n\n[ALT-01] Alternador 12V 90A\n[FLT-01] Filtro\n\nEl archivo quedó en data/exports/cotizacion_20261006_170407.json. ¿Quieres que verifique compatibilidad con algún vehículo en particular?"
+    },
+    {
+      "id": "C13",
+      "tipo": "memoria_escritura",
+      "descripcion": "El cliente entrega un dato que debe recordarse",
+      "entradas": [
+        "Guarda en tu memoria que mi auto es un Suzuki Swift 2015"
+      ],
+      "session": "eval-memoria",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Escritura en memoria de LARGO PLAZO (IE3/IE4).",
+      "herramientas": [
+        "recordar_dato"
+      ],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 4056,
+        "completion": 81,
+        "total": 4137
+      },
+      "duracion_s": 34.9,
+      "respuesta": "Listo, guardé que tu auto es un Suzuki Swift 2015. ¿En qué más te ayudo?"
+    },
+    {
+      "id": "C14",
+      "tipo": "memoria_lectura",
+      "descripcion": "En una SESION NUEVA pide un dato guardado en la anterior",
+      "entradas": [
+        "¿Sabes qué vehículo tengo?"
+      ],
+      "session": "eval-memoria-2",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Recuperacion de contexto entre sesiones: memoria persistente (IE3/IE4).",
+      "herramientas": [],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 1993,
+        "completion": 33,
+        "total": 2026
+      },
+      "duracion_s": 16.7,
+      "respuesta": "Sí, según lo que tengo guardado, tu vehículo es un **Suzuki Swift 2015**. ¿En qué puedo ayudarte con él?"
+    },
+    {
+      "id": "C15",
+      "tipo": "conversacional",
+      "descripcion": "Saludo social sin intencion de compra",
+      "entradas": [
+        "Hola, ¿cómo estás?"
+      ],
+      "session": "eval-C15",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Respuesta cortes sin llamar herramientas ni inventar datos.",
+      "herramientas": [],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 1992,
+        "completion": 21,
+        "total": 2013
+      },
+      "duracion_s": 18.2,
+      "respuesta": "¡Hola! Estoy bien, gracias. ¿En qué puedo ayudarte con repuestos para tu vehículo?"
+    }
+  ]
+}
