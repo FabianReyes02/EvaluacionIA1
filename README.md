@@ -25,8 +25,8 @@ llamar, con qué argumentos y cuándo detenerse.
 | **A. Agente con framework** (consulta, escritura, razonamiento) | `agent/agent.py` (`create_agent` de LangChain) + `agent/tools.py` (6 tools) |
 | **B. Memoria corto y largo plazo** | `agent/memory.py` (ventana de 10 turnos + `memoria.jsonl` + colección Chroma) |
 | **C. Planificación y decisiones** | Loop plan→tool→observación, `agent/guardrails.py` y `tests/` |
-| **D. Documentación técnica** | Este README + `agents.md` (decisiones de diseño) |
-| **E / F. Redacción, diagramas y flujos** | Informe del equipo + `tests/resultados/eval_reporte.md` (trazas reales) |
+| **D. Documentación técnica** | Este README + `agents.md` (decisiones de diseño) + `docs/diagramas.md` (orquestación y flujos, IE7) |
+| **E / F. Redacción, diagramas y flujos** | Informe del equipo + `docs/diagramas.md` + `tests/resultados/eval_reporte.md` (trazas reales) |
 | **G. Referencias APA** | Sección [Referencias](#-referencias) |
 
 ## 🛠️ Tecnologías
@@ -137,6 +137,9 @@ EvaluacionIA1/
 │   ├── eval_dataset.json 15 casos con lo esperado y su justificación
 │   ├── eval_agent.py     Ejecuta la suite y genera el reporte
 │   └── resultados/       Evidencia generada
+├── docs/
+│   ├── diagramas.md      Orquestación y flujos (Mermaid, IE7/IE9)
+│   └── CHECKLIST_ENTREGA.md  Verificación + entregables AVA/email
 ├── scripts/
 │   ├── verify_env.py         Verifica LLM, tool-calling, agente, embeddings y Chroma
 │   └── generate_sample_data.py  Genera CSV y manuales PDF de ejemplo
@@ -182,6 +185,19 @@ Implementadas como **código** en `agent/guardrails.py`, no solo en el prompt:
   `no verificado` y se avisa.
 - Stock menor a 5 o agotado → alerta explícita, verificada tras la respuesta.
 
+### Resiliencia ante límite de tasa (Groq gratuito, 1000 OTPM)
+
+Solo los errores 429 se reintentan (3 intentos, espera 20s/40s/60s) en
+`agent/agent.py` + `agent/llm_client.py`; otros errores caen directo al
+fallback sin duplicar llamadas. Configurable con `AGENT_RETRY_ATTEMPTS` y
+`AGENT_RETRY_BASE_S`.
+
+## 🗺️ Diagramas
+
+Orquestación, flujos feliz/negativa y memoria en [`docs/diagramas.md`](docs/diagramas.md)
+(Mermaid, renderiza en GitHub). Checklist de verificación y entrega en
+[`docs/CHECKLIST_ENTREGA.md`](docs/CHECKLIST_ENTREGA.md).
+
 ## ⚙️ Configuración (`.env`)
 
 | Variable | Descripción | Default |
@@ -191,6 +207,7 @@ Implementadas como **código** en `agent/guardrails.py`, no solo en el prompt:
 | `GROQ_MODEL` / `OPENAI_MODEL` | Modelo a usar | `qwen/qwen3.8-27b` / `gpt-4o-mini` |
 | `EMBEDDING_MODEL` | Modelo de embeddings locales | `paraphrase-multilingual-MiniLM-L12-v2` |
 | `MEMORIA_FILE` / `MEMORIA_COLLECTION` | Ruta y colección de la memoria (los tests las aíslan) | `data/memory/memoria.jsonl` / `memoria` |
+| `AGENT_RETRY_ATTEMPTS` / `AGENT_RETRY_BASE_S` | Reintentos solo ante 429 y espera base (20s,40s,60s) | `3` / `20` |
 
 ## 📊 Resultado de las pruebas
 

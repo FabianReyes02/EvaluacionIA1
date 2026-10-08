@@ -3,7 +3,7 @@
 **Proyecto:** EvaluacionIA1 (Asistente de IA para Venta de Repuestos Automotrices)
 **Curso:** ISY0101 Ingeniería de Soluciones con IA — Evaluación Parcial 1 (30%)
 **GitHub:** https://github.com/FabianReyes02/EvaluacionIA1
-**Última actualización:** 2026-10-06
+**Última actualización:** 2026-10-08
 
 > Memoria técnica del proyecto. Se actualiza en cada sesión para preservar
 > decisiones, tradeoffs y avance entre entregas. Sirve de bitácora para el
@@ -35,6 +35,7 @@
 | D9 | Memoria | Corto plazo: ventana de 10 turnos por sesión en memoria. Largo plazo: `data/memory/memoria.jsonl` **+** colección Chroma con recuperación semántica, escrita/leída por tools que el agente decide llamar | Cumple "corto y largo plazo" con una sola tecnología ya presente; el JSONL garantiza persistencia aunque Chroma falle | Solo `ConversationBuffer` (sin persistencia) o base vectorial dedicada |
 | D10 | Guardrails | Verificación **post-LLM** en `agent/guardrails.py`: todo código mencionado se contrasta con el CSV y todo stock crítico exige alerta | La regla es no negociable y un prompt no garantiza el comportamiento (el agente llegó a decir que guardó un dato sin llamar la tool) | Confiar solo en el system prompt |
 | D11 | Entorno | `pip` + `.venv` (Python 3.13) con `requirements.txt` congelado | `uv` no estaba disponible en la máquina de desarrollo; se priorizó poder ejecutar y evaluar el agente | Instalar uv y regenerar `uv.lock` (pendiente si se retoma D5) |
+| D12 | Resiliencia 429 | Reintentos con backoff **solo ante límite de tasa** en `agent/agent.py` + `agent/llm_client.py` (3 intentos, 20s/40s/60s, env `AGENT_RETRY_ATTEMPTS`/`AGENT_RETRY_BASE_S`); mensaje amable + fallback CSV si se agotan | El plan gratuito Groq limita a 1000 OTPM y los evals lo disparan; reintentar todo duplicaría llamadas pagadas | Reintentar errores genéricos o solo confiar en el fallback seco |
 
 Convencion de commits: mensajes simples y en espanol durante todo el semestre.
 
@@ -76,8 +77,11 @@ EvaluacionIA1/
 │   ├── rag.py                      ✓ ingesta PDF+CSV → ChromaDB (Fase 1)
 │   ├── guardrails.py               ✓ verificación post-LLM (Fase 4)
 │   ├── prompts.py                  ✓ system prompt + prompts de la CLI
-│   ├── llm_client.py               ✓ cliente LLM intercambiable (Groq/OpenAI)
+│   ├── llm_client.py               ✓ cliente LLM intercambiable (Groq/OpenAI) + retry 429
 │   └── trace.py                    ✓ log JSONL de decisiones (Fase 3)
+├── docs/
+│   ├── diagramas.md                ✓ orquestación y flujos Mermaid (IE7/IE9)
+│   └── CHECKLIST_ENTREGA.md        ✓ verificación + entregables AVA/email
 ├── ingestion/
 │   └── ingest.py                   ✓ CLI de ingesta RAG (Fase 1)
 ├── tools/
@@ -95,7 +99,7 @@ EvaluacionIA1/
 │   └── generate_sample_data.py     ✓ genera inventory.csv + manuales PDF
 └── requirements.txt                ✓ dependencias congeladas (pip)
 ```
-(✓ = implementado. El informe y los diagramas los maneja el equipo fuera de este repo.)
+(✓ = implementado. El informe de 5 páginas lo redacta el equipo con `docs/diagramas.md` + `tests/resultados/` como insumos.)
 
 ## 5. Plan de fases
 
@@ -110,7 +114,8 @@ EvaluacionIA1/
       (`agent/guardrails.py`)
 - [x] Fase 5 — Evals: 15 casos (≥3 alerta/negativa), meta ≥85 % → **15/15 (100 %)**
 - [x] Fase 6 — README con instrucciones precisas, estructura y referencias APA
-      (los diagramas y el informe los realiza el equipo en el documento aparte)
+      + `docs/diagramas.md` (orquestación y flujos Mermaid, IE7/IE9)
+      + `docs/CHECKLIST_ENTREGA.md` (verificación y entregables)
 - [x] Fase 6b — Interfaz web (`web/server.py` + `web/static/index.html`) y memoria
       multi-turno (`agent/memory.py`)
 
@@ -130,6 +135,12 @@ EvaluacionIA1/
   `agent/memory.py`).
 - `.env` está gitignored y no viaja en git: recrearlo desde `.env.example`
   en cada checkout.
+- En la máquina de desarrollo la directiva de Control de aplicaciones bloquea
+  el binario nativo de `tiktoken` (`_tiktoken...pyd`), sin el cual
+  `langchain_openai` no se importa. Workaround SOLO local (no va a git):
+  stub puro-Python en `.venv/Lib/site-packages/sitecustomize.py`. El proyecto
+  no cuenta tokens localmente (usa `usage_metadata` de la API), así que el
+  stub no afecta resultados. En otra máquina no hace falta.
 
 ## 7. Historial de decisiones
 
@@ -159,6 +170,14 @@ EvaluacionIA1/
   memoria aislada para los tests y system prompt reforzado (el agente afirmaba
   guardar sin llamar la tool). Evals: 15/15 (100 %). README reescrito con
   instrucciones precisas.
+- **2026-10-08** — Resiliencia 429 (D12) + documentación EP2: reintentos con
+  backoff solo ante límite de tasa en `agent/agent.py` y `agent/llm_client.py`
+  (env `AGENT_RETRY_ATTEMPTS`/`AGENT_RETRY_BASE_S`, verificado offline:
+  detección 429, backoff 20/40/60s y fallback CSV); `docs/diagramas.md`
+  (orquestación y flujos Mermaid, IE7/IE9) y `docs/CHECKLIST_ENTREGA.md`.
+  Entorno revalidado en esta máquina: `.venv` Python 3.12 + `requirements.txt`,
+  ingesta (3 + 12 docs) y `verify_env.py` todo verde con stub local de
+  `tiktoken` (bloqueado por Control de aplicaciones, no va a git).
 
 ## 8. En progreso (pausa al hacer commit — 2026-10-06)
 
@@ -166,16 +185,16 @@ EvaluacionIA1/
   uso intensivo (evals + pruebas) el agente a veces falla con
   `OpenAIRateLimitError` (HTTP 429). Al detectarlo en `web/server.py` la
   respuesta ya cae a "modo sin IA", pero la UX es mala.
-- **Trabajo en curso:** añadir reintentos con backoff en `agent/agent.py` para
-  los errores de límite de tasa (`langchain_core.exceptions.ModelRateLimitError`
-  o `openai.RateLimitError`) — 2-3 intentos con espera creciente (~20s), y solo
-  reintentar esos errores (no genéricos, para no duplicar llamadas pagadas).
-- **Hecho hasta aquí y validado:**
-  - `python scripts/verify_env.py` → todo verde (LLM, tool-calling, agente,
-    embeddings 384d, ChromaDB).
-  - `python tests/eval_agent.py` → 15/15 (100 %) con memoria de eval aislada.
-  - `python main.py` (CLI con Suzuki Swift 2015) → responde con 4 repuestos.
-  - `web/server.py` probado end-to-end (health, chat multi-turno, reset); el
-    429 de tasa se confirmó en vivo durante la prueba interactiva.
-- **Sigue pendiente:** el retry del punto anterior, re-correr la suite y volver
-  a verificar con `verify_env.py`, y el commit+push final.
+- **Resuelto 2026-10-08 (D12):** reintentos con backoff en `agent/agent.py`
+  (`_invoke_with_retry`) y `agent/llm_client.py` (`ask_llm`) solo ante 429 —
+  3 intentos 20s/40s/60s configurables (`AGENT_RETRY_ATTEMPTS` /
+  `AGENT_RETRY_BASE_S`); si se agotan, mensaje de saturación + fallback CSV.
+  Diagramas en `docs/diagramas.md` y checklist en `docs/CHECKLIST_ENTREGA.md`.
+- **Validado 2026-10-08 en esta máquina** (`.venv` Python 3.12, key Groq real):
+  - `python ingestion/ingest.py --force` → manuales 3 + inventario 12 docs.
+  - `python scripts/verify_env.py` → todo verde (LLM, tool-calling, agente
+    6 tools, embeddings 384d, ChromaDB).
+  - Hallazgo: `tiktoken` nativo bloqueado por Control de aplicaciones →
+    stub local en `.venv/.../sitecustomize.py` (no va a git, ver §6).
+- **Sigue pendiente:** re-correr `tests/eval_agent.py` con el retry nuevo,
+  redactar el informe de 5 páginas y el commit+push final.

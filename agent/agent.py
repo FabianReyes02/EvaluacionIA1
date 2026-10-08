@@ -21,7 +21,14 @@ from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agent.guardrails import apply as apply_guardrails
-from agent.llm_client import get_chat_model, get_provider_config, usage_from
+from agent.llm_client import (
+    RATE_LIMIT_RETRIES,
+    get_chat_model,
+    get_provider_config,
+    is_rate_limit_error,
+    retry_delay_s,
+    usage_from,
+)
 from agent.memory import LongTermMemory, get_session
 from agent.prompts import SYSTEM_PROMPT, build_context_block
 from agent.tools import ALL_TOOLS, get_inventory
@@ -76,6 +83,39 @@ def _sum_tokens(messages) -> dict | None:
             for k in total:
                 total[k] += usage[k]
     return total if found else None
+
+
+def _invoke_with_retry(agent, payload: dict) -> tuple[dict, int, bool]:
+    """Invoca el loop plan->tool con reintentos solo ante limite de tasa.
+
+    Devuelve (resultado, reintentos_usados). Otros errores se propagan al
+    caller para que caiga al fallback sin reintentar (no se reintentan
+    llamadas que fallaron por otra causa).
+    """
+    import time
+
+    intentos = max(0, RATE_LIMIT_RETRIES)
+    for intento in range(intentos + 1):
+        try:
+            return agent.invoke(payload), intento, False
+        except Exception as exc:
+            if is_rate_limit_error(exc) and intento < intentos:
+                espera = retry_delay_s(intento)
+                print(f"(aviso) Limite de tasa en el agente ({exc.__class__.__name__}): "
+                      f"reintento {intento + 1}/{intentos} en {espera:.0f}s...")
+                time.sleep(espera)
+                continue
+            raise
+    raise RuntimeError("reintentos agotados")  # inalcanzable, por completitud
+
+
+def _rate_limit_message() -> str:
+    """Mensaje amable cuando se agotan los reintentos por limite de tasa."""
+    return (
+        "El servicio de IA esta saturado por limite de tasa (plan gratuito Groq, "
+        "1000 tokens de salida/minuto). Reintente en un minuto; "
+        "mientras tanto puedo buscar directo en el inventario. "
+    )
 
 
 def _fallback(user_input: str) -> str:
@@ -139,9 +179,15 @@ def run(agent_input: str, session_id: str = "default") -> dict:
 
     if agent is None:
         answer = _fallback(agent_input)
+        reintentos = 0
+        rate_limited = False
     else:
+        reintentos = 0
+        rate_limited = False
         try:
-            result = agent.invoke({"messages": _messages_for(agent_input, session_id)})
+            result, reintentos, _ = _invoke_with_retry(
+                agent, {"messages": _messages_for(agent_input, session_id)}
+            )
             messages = result.get("messages", [])
             steps = steps_from_messages(messages)
             tokens = _sum_tokens(messages)
@@ -158,9 +204,14 @@ def run(agent_input: str, session_id: str = "default") -> dict:
             answer = content or "(el modelo no devolvio texto)"
         except Exception as exc:
             print(f"(aviso) Fallo el agente: {exc.__class__.__name__}: {exc}")
-            answer = f"No pude completar la consulta con IA ({exc.__class__.__name__}). " + _fallback(
-                agent_input
-            )
+            if is_rate_limit_error(exc):
+                rate_limited = True
+                reintentos = RATE_LIMIT_RETRIES
+                answer = _rate_limit_message() + _fallback(agent_input)
+            else:
+                answer = f"No pude completar la consulta con IA ({exc.__class__.__name__}). " + _fallback(
+                    agent_input
+                )
 
     # Guardrails: se aplican siempre, haya IA o no.
     answer, violations = apply_guardrails(answer, inventory)
@@ -179,7 +230,11 @@ def run(agent_input: str, session_id: str = "default") -> dict:
         tokens=tokens,
         guardrails=guardrails,
         used_llm=used_llm,
-        extra={"modelo": (get_provider_config() or {}).get("model")},
+        extra={
+            "modelo": (get_provider_config() or {}).get("model"),
+            "reintentos": reintentos,
+            "rate_limited": rate_limited,
+        },
     )
 
     return {
@@ -190,6 +245,8 @@ def run(agent_input: str, session_id: str = "default") -> dict:
         "used_llm": used_llm,
         "modelo": (get_provider_config() or {}).get("model"),
         "session_id": session_id,
+        "reintentos": reintentos,
+        "rate_limited": rate_limited,
     }
 
 

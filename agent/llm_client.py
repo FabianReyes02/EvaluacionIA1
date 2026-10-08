@@ -15,6 +15,11 @@ load_dotenv()
 
 TEMPERATURE = 0.3
 
+# Reintentos solo ante limite de tasa (HTTP 429 / OTPM de Groq, 1000 tok/min).
+# Configurable por entorno para no alargar los evals mas de lo necesario.
+RATE_LIMIT_RETRIES = int(os.getenv("AGENT_RETRY_ATTEMPTS", "3"))
+RATE_LIMIT_BASE_S = float(os.getenv("AGENT_RETRY_BASE_S", "20"))
+
 PROVIDERS: dict[str, dict] = {
     "openai": {
         "base_url": None,
@@ -87,21 +92,63 @@ def usage_from(message) -> dict | None:
 
 
 def ask_llm(prompt: str, model: ChatOpenAI | None = None) -> tuple[str | None, dict | None]:
-    """Llamada puntual de una sola vuelta. Devuelve (respuesta, tokens) o (None, None)."""
+    """Llamada puntual de una sola vuelta. Devuelve (respuesta, tokens) o (None, None).
+
+    Reintenta solo ante limite de tasa (429); otros errores fallan rapido para
+    no duplicar llamadas pagadas.
+    """
     llm = model or get_chat_model()
     if llm is None:
         return None, None
-    try:
-        message = llm.invoke(prompt)
-    except Exception as exc:
-        print(f"(aviso) La llamada al LLM fallo: {exc.__class__.__name__}")
-        return None, None
-    content = message.content
-    if isinstance(content, list):  # el modelo puede devolver bloques estructurados
-        content = "".join(
-            block.get("text", "") if isinstance(block, dict) else str(block) for block in content
-        )
-    return content, usage_from(message)
+    intentos = max(0, RATE_LIMIT_RETRIES)
+    for intento in range(intentos + 1):
+        try:
+            message = llm.invoke(prompt)
+        except Exception as exc:
+            if is_rate_limit_error(exc) and intento < intentos:
+                _sleep_retry(intento, exc)
+                continue
+            print(f"(aviso) La llamada al LLM fallo: {exc.__class__.__name__}")
+            return None, None
+        content = message.content
+        if isinstance(content, list):  # el modelo puede devolver bloques estructurados
+            content = "".join(
+                block.get("text", "") if isinstance(block, dict) else str(block) for block in content
+            )
+        return content, usage_from(message)
+    return None, None
+
+
+def is_rate_limit_error(exc: BaseException) -> bool:
+    """True si la excepcion es un limite de tasa (HTTP 429 / OTPM) reintentable."""
+    nombres = {c.__name__ for c in type(exc).__mro__}
+    if nombres & {
+        "RateLimitError",
+        "OpenAIRateLimitError",
+        "ModelRateLimitError",
+        "TooManyRequestsError",
+    }:
+        return True
+    status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+    if status == 429:
+        return True
+    texto = f"{exc.__class__.__name__}: {exc}".lower()
+    return ("429" in texto or "rate_limit" in texto or "rate limit" in texto
+            or "too many requests" in texto or "otpm" in texto or "tpm" in texto)
+
+
+def retry_delay_s(intento: int) -> float:
+    """Espera creciente: base * (intento + 1) -> 20s, 40s, 60s por defecto."""
+    return RATE_LIMIT_BASE_S * (intento + 1)
+
+
+def _sleep_retry(intento: int, exc: BaseException) -> None:
+    import time
+
+    espera = retry_delay_s(intento)
+    print(f"(aviso) Limite de tasa ({exc.__class__.__name__}): "
+          f"reintento {intento + 1}/{RATE_LIMIT_RETRIES} en {espera:.0f}s...")
+    time.sleep(espera)
 
 
 def add_tokens(a: dict | None, b: dict | None) -> dict | None:
