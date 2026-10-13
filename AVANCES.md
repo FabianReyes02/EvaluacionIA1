@@ -2,7 +2,7 @@
 
 **Proyecto:** Asistente de IA para Venta de Repuestos Automotrices (RAG)
 **Equipo:** Fabián Reyes Matías Vargas — Caso: Repuestos Sur
-**Última actualización:** 2026-10-06
+**Última actualización:** 2026-10-13
 
 ## Lo que se hizo
 
@@ -56,37 +56,43 @@ EvaluacionIA1/
 ## Lo que queda pendiente
 
 ### Inmediato (antes de la Fase 1)
-- [ ] Recrear `.env` desde `.env.example` (`.env` está gitignored y no está
-      presente en este checkout) y pegar la `GROQ_API_KEY` real (o
-      `OPENAI_API_KEY`).
-- [x] Alinear `scripts/verify_env.py` con Groq: ahora valida el LLM según
+- [x] Recrear `.env` desde `.env.example` y pegar la `GROQ_API_KEY` real.
+      Verificado: `.env` existe en el checkout con `LLM_PROVIDER=groq` y
+      `GROQ_MODEL=qwen/qwen3.8-27b` (gitignored, no viaja en git).
+- [x] Alinear `scripts/verify_env.py` con Groq: valida el LLM según
       `LLM_PROVIDER` (Groq o OpenAI) y la verificación corre de punta a punta
       (Groq OK, embeddings 384d, ChromaDB OK).
-- [ ] `uv run python scripts/verify_env.py` para validar de punta a punta
-      LLM, embeddings y ChromaDB (la primera ejecución descarga ~470MB del
-      modelo de embeddings).
+- [x] Validar de punta a punta LLM, embeddings y ChromaDB con
+      `scripts/verify_env.py` (ejecutado con éxito el 2026-10-08; ver
+      actualización al final del archivo).
 
 ### Fases del plan (según agents.md)
-- [ ] **Fase 1** — Ingesta real: cargar CSV y PDF (document loaders de
-      LangChain), chunking (`RecursiveCharacterTextSplitter` 500/50) e índice
-      ChromaDB persistente en `chroma_db/`.
-- [ ] **Fase 2** — `agent/llm_client.py` (LLM intercambiable), `prompts.py` y
-      chain RAG base con citas de fuente.
-- [ ] **Fase 3** — `tools/inventory_lookup.py` (búsqueda en inventario) y
-      `tools/compatibility_checker.py` (validación vehículo/modelo), `main.py`
+- [x] **Fase 1** — Ingesta real: `agent/rag.py` e `ingestion/ingest.py`
+      cargan CSV y PDF, chunking 500/50 e índice ChromaDB persistente en
+      `chroma_db/` (colecciones `manuales` e `inventario`).
+- [x] **Fase 2** — `agent/llm_client.py` (LLM intercambiable), `prompts.py` y
+      cadena RAG con citas de fuente (`agent/tools.py`).
+- [x] **Fase 3** — `tools/inventory_lookup.py` (búsqueda en inventario),
+      tools en `agent/tools.py` (incluye `verificar_compatibilidad`), `main.py`
       CLI y `agent/trace.py` (log JSONL de trazabilidad).
-- [ ] **Fase 4** — Guardrails de seguridad en código (post-LLM): nunca sugerir
-      un repuesto sin fuente; alerta explícita por stock crítico.
-- [ ] **Fase 5** — Evals: `tests/eval_dataset.json` (12-15 casos, meta ≥85%) y
-      `tests/eval_agent.py`.
-- [ ] **Fase 6** — README completo + diagrama Mermaid + `docs/` (informe).
+- [x] **Fase 4** — Guardrails de seguridad en código (post-LLM) en
+      `agent/guardrails.py`: nunca sugerir un repuesto sin fuente; alerta
+      explícita por stock crítico.
+- [x] **Fase 5** — Evals: `tests/eval_dataset.json` (15 casos, meta ≥85%) y
+      `tests/eval_agent.py` → **15/15 (100%)**, evidencia en
+      `tests/resultados/`. Pendiente solo re-correrlos con el retry 429 nuevo.
+- [x] **Fase 6** — README completo + diagramas Mermaid (`docs/diagramas.md`) +
+      `docs/CHECKLIST_ENTREGA.md`.
+- [x] **Fase 7 — Informe EP2** — Informe de 5 páginas (APA, IE1–IE10) redactado
+      y entregado, con diagramas de orquestación/flujos y evidencia de evals.
 
 ## Notas / limitaciones
 - Los manuales técnicos y el inventario actuales son **datos de ejemplo
   simulados** (no son los datos reales de Repuestos Sur).
 - La primera ejecución del modelo de embeddings descarga ~470MB (una sola vez).
-- `.env` no está presente en este checkout (gitignored), aunque la actualización
-  de 2026-09-09 registra su creación con key de Groq; debe recrearse localmente.
+- `.env` está presente en este checkout local (gitignored) con key de Groq;
+  no viaja en git, por lo que debe recrearse desde `.env.example` en cada
+  checkout nuevo.
 - `scripts/verify_env.py` validaba antes solo `OPENAI_API_KEY`; desde el
   2026-09-09 valida el proveedor activo (`LLM_PROVIDER`), incluido Groq.
 
@@ -188,3 +194,79 @@ EvaluacionIA1/
   herramientas, reglas de seguridad, configuración, resultados de pruebas y
   referencias APA.
 - `.gitignore`: ahora ignora `data/exports/` y `data/memory/*.jsonl`.
+
+## Actualización 2026-10-08 — Resiliencia 429 y documentación EP2
+
+### Resiliencia ante límite de tasa (D12)
+- Reintentos con backoff **solo ante 429** (límite OTPM del plan gratuito de
+  Groq, 1000 tok/min) en `agent/agent.py` (`_invoke_with_retry`) y
+  `agent/llm_client.py` (`ask_llm`): 3 intentos con espera 20s/40s/60s,
+  configurables con `AGENT_RETRY_ATTEMPTS` y `AGENT_RETRY_BASE_S`.
+- Si se agotan los reintentos: mensaje de saturación + fallback a búsqueda
+  directa sobre el CSV (no cae a error seco). Variable documentada en
+  `.env.example` y en el README.
+
+### Documentación y verificación
+- `docs/diagramas.md`: orquestación y flujos feliz/negativa/memoria en Mermaid
+  (IE7/IE9), insumo para el informe.
+- `docs/CHECKLIST_ENTREGA.md`: pasos de verificación técnica y entregables.
+- Entorno revalidado el 2026-10-08 (`.venv` Python 3.12 + `requirements.txt`):
+  `ingestion/ingest.py --force` → manuales 3 + inventario 12 docs;
+  `scripts/verify_env.py` → todo verde (LLM, tool-calling, agente 6 tools,
+  embeddings 384d, ChromaDB).
+- Hallazgo local: `tiktoken` nativo bloqueado por Control de aplicaciones →
+  stub en `.venv/.../sitecustomize.py` (no va a git; ver limitaciones).
+
+## Estado real de pendientes (verificado 2026-10-13)
+
+- [x] **Informe de 5 páginas** (APA, IE1–IE10) redactado con los insumos
+      `docs/diagramas.md`, `tests/resultados/` y `agents.md` D1–D12.
+- [ ] Re-correr `tests/eval_agent.py` con el retry 429 nuevo (la última
+      evidencia en `tests/resultados/` es del 2026-10-06, previa al retry).
+- [ ] Commit + push final (incluir `docs/`, retry en `agent/` y README; NO
+      subir `.env`, `chroma_db/`, `logs/`, `data/memory/*.jsonl`, `data/exports/`).
+- [ ] Publicar el repo/enlace + informe en la plataforma AVA y por email al
+      docente (ver `docs/CHECKLIST_ENTREGA.md`).
+
+## Actualización 2026-10-13 — Informe EP2 redactado
+
+- Se redactó el **informe de 5 páginas** (máximo exigido por la pauta), que
+  cubre los apartados A–G del encargo y los indicadores IE1–IE10:
+  - **A/IE1–IE2** Diseño e implementación del agente: 6 tools (consulta y
+    escritura) sobre LangChain Agents.
+  - **B/IE3–IE4** Memoria de corto y largo plazo y recuperación semántica
+    (evidencia de los casos C13 y C14).
+  - **C/IE5–IE6** Planificación y toma de decisiones con ejemplos reales
+    (C01, C03, C05, C07, C09, C12) y guardrails post-LLM.
+  - **D/IE7–IE8** Documentación, arquitectura y justificación de componentes
+    (README + `docs/diagramas.md` + D1–D12).
+  - **E/F/G/IE9–IE10** Diagramas de orquestación y flujos, redacción técnica y
+    referencias APA.
+- Insumos usados: `README.md`, `agents.md` (D1–D12), `docs/diagramas.md` y
+  `tests/resultados/eval_reporte.{md,json}`.
+- Con esto quedan cerradas las fases funcionales del proyecto; solo resta
+  re-correr los evals con el retry 429 y hacer el commit + push y la entrega.
+
+## Cómo ejecutar el proyecto (resumen)
+
+```bash
+# 1. Entorno (pip + requirements; ver D11)
+python -m venv .venv && .venv\Scripts\activate
+pip install -r requirements.txt
+
+# 2. Credenciales
+copy .env.example .env        # pegar GROQ_API_KEY (gsk_...)
+
+# 3. Ingesta RAG (una vez; --force reconstruye, --stats muestra estado)
+python ingestion/ingest.py
+
+# 4. Verificación integral (LLM, tool-calling, agente, embeddings, Chroma)
+python scripts/verify_env.py
+
+# 5. Interfaces
+python web/server.py          # web en http://127.0.0.1:8000
+python main.py                # CLI marca/modelo/año
+
+# 6. Evals / evidencia (meta >= 85%)
+python tests/eval_agent.py
+```
