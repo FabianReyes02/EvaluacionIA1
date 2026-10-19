@@ -3,7 +3,7 @@
 **Proyecto:** EvaluacionIA1 (Asistente de IA para Venta de Repuestos Automotrices)
 **Curso:** ISY0101 Ingeniería de Soluciones con IA — Evaluación Parcial 2 (35%)
 **GitHub:** https://github.com/FabianReyes02/EvaluacionIA1
-**Última actualización:** 2026-10-13
+**Última actualización:** 2026-10-19
 
 > Memoria técnica del proyecto. Se actualiza en cada sesión para preservar
 > decisiones, tradeoffs y avance entre entregas. Sirve de bitácora para el
@@ -35,7 +35,7 @@
 | D9 | Memoria | Corto plazo: ventana de 10 turnos por sesión en memoria. Largo plazo: `data/memory/memoria.jsonl` **+** colección Chroma con recuperación semántica, escrita/leída por tools que el agente decide llamar | Cumple "corto y largo plazo" con una sola tecnología ya presente; el JSONL garantiza persistencia aunque Chroma falle | Solo `ConversationBuffer` (sin persistencia) o base vectorial dedicada |
 | D10 | Guardrails | Verificación **post-LLM** en `agent/guardrails.py`: todo código mencionado se contrasta con el CSV y todo stock crítico exige alerta | La regla es no negociable y un prompt no garantiza el comportamiento (el agente llegó a decir que guardó un dato sin llamar la tool) | Confiar solo en el system prompt |
 | D11 | Entorno | `pip` + `.venv` (Python 3.12 verificado el 2026-10-13; antes 3.13 en otra máquina) con `requirements.txt` congelado | `uv` no estaba disponible en la máquina de desarrollo; se priorizó poder ejecutar y evaluar el agente | Instalar uv y regenerar `uv.lock` (pendiente si se retoma D5) |
-| D12 | Resiliencia 429 | Reintentos con backoff **solo ante límite de tasa** en `agent/agent.py` + `agent/llm_client.py` (3 intentos, 20s/40s/60s, env `AGENT_RETRY_ATTEMPTS`/`AGENT_RETRY_BASE_S`); mensaje amable + fallback CSV si se agotan | El plan gratuito Groq limita a 1000 OTPM y los evals lo disparan; reintentar todo duplicaría llamadas pagadas | Reintentar errores genéricos o solo confiar en el fallback seco |
+| D12 | Resiliencia 429 | Reintentos con backoff **solo ante límite de tasa** en `agent/agent.py` + `agent/llm_client.py` (4 intentos, 20s/40s/60s/80s, env `AGENT_RETRY_ATTEMPTS`/`AGENT_RETRY_BASE_S`); mensaje amable + fallback CSV si se agotan. En evals, **pausa configurable `--pausa`** (15s por caso) para no agotar el cupo | El plan gratuito Groq limita a 1000 OTPM y los evals lo disparan; reintentar todo duplicaría llamadas pagadas | Reintentar errores genéricos o solo confiar en el fallback seco |
 
 Convencion de commits: mensajes simples y en espanol durante todo el semestre.
 
@@ -113,7 +113,7 @@ EvaluacionIA1/
 - [x] Fase 4 — Guardrails de seguridad: negativa sin fuente y alerta de stock
       (`agent/guardrails.py`)
 - [x] Fase 5 — Evals: 15 casos (≥3 alerta/negativa), meta ≥85 % → **15/15 (100 %)**
-      (evidencia del 2026-10-06, previa al retry 429; pendiente re-correr)
+      (evidencia regenerada el 2026-10-19 con el retry 429 y pausa entre casos)
 - [x] Fase 6 — README con instrucciones precisas, estructura y referencias APA
       + `docs/diagramas.md` (orquestación y flujos Mermaid, IE7/IE9)
       + `docs/CHECKLIST_ENTREGA.md` (verificación y entregables)
@@ -145,7 +145,8 @@ EvaluacionIA1/
   `langchain_openai` no se importa. Workaround SOLO local (no va a git):
   stub puro-Python en `.venv/Lib/site-packages/sitecustomize.py`. El proyecto
   no cuenta tokens localmente (usa `usage_metadata` de la API), así que el
-  stub no afecta resultados. En otra máquina no hace falta.
+  stub no afecta resultados. En otra máquina no hace falta. (Al recrear el
+  entorno el 2026-10-19 con Python 3.12.10 no se reprodujo y no hizo falta.)
 
 ## 7. Historial de decisiones
 
@@ -188,8 +189,16 @@ EvaluacionIA1/
   apoyado en `README.md`, `docs/diagramas.md`, `tests/resultados/` y las
   decisiones D1–D12. Con esto se cierran las fases funcionales; resta re-correr
   los evals con el retry 429 y la entrega (commit + push + AVA + email).
+- **2026-10-19** — Evals re-corridos a **15/15 (100 %)**. En un checkout nuevo
+  (sin Python ni `.venv`) se instaló Python 3.12.10 con `winget` y se recreó el
+  entorno con `pip` + `requirements.txt`; ingesta y `verify_env.py` verdes. La
+  evidencia previa daba 14/15 porque C13 caía a modo sin IA por **429
+  acumulado**; aislado pasaba (1/1), así que se añadió **pausa configurable
+  `--pausa`** (15s) entre casos en `tests/eval_agent.py` y se subió
+  `AGENT_RETRY_ATTEMPTS=4`. La corrida completa salió 15/15 con **0
+  reintentos** (evidencia regenerada en `tests/resultados/`). D12 ampliada.
 
-## 8. En progreso (actualizado 2026-10-13)
+## 8. En progreso (actualizado 2026-10-19)
 
 - **Límite OTPM del plan gratuito de Groq (1000 tokens de salida/minuto).** Con
   uso intensivo (evals + pruebas) el agente a veces falla con
@@ -197,7 +206,7 @@ EvaluacionIA1/
   respuesta ya cae a "modo sin IA", pero la UX es mala.
 - **Resuelto 2026-10-08 (D12):** reintentos con backoff en `agent/agent.py`
   (`_invoke_with_retry`) y `agent/llm_client.py` (`ask_llm`) solo ante 429 —
-  3 intentos 20s/40s/60s configurables (`AGENT_RETRY_ATTEMPTS` /
+  4 intentos 20s/40s/60s/80s configurables (`AGENT_RETRY_ATTEMPTS` /
   `AGENT_RETRY_BASE_S`); si se agotan, mensaje de saturación + fallback CSV.
   Diagramas en `docs/diagramas.md` y checklist en `docs/CHECKLIST_ENTREGA.md`.
 - **Validado 2026-10-08 en esta máquina** (`.venv` Python 3.12, key Groq real):
@@ -209,5 +218,7 @@ EvaluacionIA1/
 - **Informe EP2 redactado (2026-10-13):** el informe de 5 páginas (A–G,
   IE1–IE10) quedó listo a partir de `docs/diagramas.md`, `tests/resultados/` y
   las decisiones D1–D12.
-- **Sigue pendiente:** re-correr `tests/eval_agent.py` con el retry nuevo y el
-  commit + push + entrega final (AVA + email docente).
+- **Evals re-corridos (2026-10-19):** `tests/eval_agent.py` → **15/15 (100 %)**
+  con retry 429 y pausa `--pausa` entre casos; 0 reintentos. Evidencia
+  regenerada en `tests/resultados/`.
+- **Sigue pendiente:** commit + push y entrega final (AVA + email docente).

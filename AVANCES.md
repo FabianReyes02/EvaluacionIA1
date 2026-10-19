@@ -2,7 +2,7 @@
 
 **Proyecto:** Asistente de IA para Venta de Repuestos Automotrices (RAG)
 **Equipo:** Fabián Reyes Matías Vargas — Caso: Repuestos Sur
-**Última actualización:** 2026-10-13
+**Última actualización:** 2026-10-19
 
 ## Lo que se hizo
 
@@ -80,7 +80,8 @@ EvaluacionIA1/
       explícita por stock crítico.
 - [x] **Fase 5** — Evals: `tests/eval_dataset.json` (15 casos, meta ≥85%) y
       `tests/eval_agent.py` → **15/15 (100%)**, evidencia en
-      `tests/resultados/`. Pendiente solo re-correrlos con el retry 429 nuevo.
+      `tests/resultados/`. Re-corridos el 2026-10-19 con el retry 429 y pausa
+      entre casos.
 - [x] **Fase 6** — README completo + diagramas Mermaid (`docs/diagramas.md`) +
       `docs/CHECKLIST_ENTREGA.md`.
 - [x] **Fase 7 — Informe EP2** — Informe de 5 páginas (APA, IE1–IE10) redactado
@@ -217,13 +218,14 @@ EvaluacionIA1/
 - Hallazgo local: `tiktoken` nativo bloqueado por Control de aplicaciones →
   stub en `.venv/.../sitecustomize.py` (no va a git; ver limitaciones).
 
-## Estado real de pendientes (verificado 2026-10-13)
+## Estado real de pendientes (verificado 2026-10-19)
 
 - [x] **Informe de 5 páginas** (APA, IE1–IE10) redactado con los insumos
       `docs/diagramas.md`, `tests/resultados/` y `agents.md` D1–D12.
-- [ ] Re-correr `tests/eval_agent.py` con el retry 429 nuevo (la última
-      evidencia en `tests/resultados/` es del 2026-10-06, previa al retry).
-- [ ] Commit + push final (incluir `docs/`, retry en `agent/` y README; NO
+- [x] Re-correr `tests/eval_agent.py` con el retry 429 (+ pausa entre casos):
+      **15/15 (100 %)** el 2026-10-19, evidencia regenerada en
+      `tests/resultados/eval_reporte.{md,json}`.
+- [ ] Commit + push final (incluir `docs/`, `tests/` y README; NO
       subir `.env`, `chroma_db/`, `logs/`, `data/memory/*.jsonl`, `data/exports/`).
 - [ ] Publicar el repo/enlace + informe en la plataforma AVA y por email al
       docente (ver `docs/CHECKLIST_ENTREGA.md`).
@@ -247,6 +249,34 @@ EvaluacionIA1/
 - Con esto quedan cerradas las fases funcionales del proyecto; solo resta
   re-correr los evals con el retry 429 y hacer el commit + push y la entrega.
 
+## Actualización 2026-10-19 — Evals re-corridos a 15/15 y entorno recreado
+
+### Entorno (checkout nuevo)
+- La máquina no tenía Python real (solo el alias de la Store) ni `uv`: se
+  instaló **Python 3.12.10** con `winget` y se recreó `.venv` con
+  `pip install -r requirements.txt` (D11). Sin el bloqueo de `tiktoken` de la
+  máquina anterior, no hizo falta el stub `sitecustomize.py`.
+- `.env` recreado desde `.env.example` con la `GROQ_API_KEY` real
+  (`LLM_PROVIDER=groq`); LangSmith en `false` durante los evals.
+- `python ingestion/ingest.py` → manuales 3 + inventario 12;
+  `python scripts/verify_env.py` → todo verde (Groq OK, tool-calling, agente
+  6 tools, embeddings 384d, ChromaDB).
+
+### Diagnóstico y fix del 429 en los evals
+- La evidencia previa (2026-10-13) daba **14/15**: C13 caía a modo sin IA por
+  **429 acumulado** al final de la suite (no era un fallo de lógica).
+- Reproducción aislada: `python tests/eval_agent.py --solo C13` → **1/1**,
+  confirmando que el problema era el cupo por minuto, no el caso.
+- Fix real y documentable en `tests/eval_agent.py`: **pausa configurable
+  `--pausa`** entre casos (15 s por defecto) para no agotar el cupo del plan
+  gratuito de Groq (1000 OTPM), más `AGENT_RETRY_ATTEMPTS=4`
+  (espera 20/40/60/80 s). El reporte ahora registra **reintentos 429** por caso.
+
+### Resultado
+- `python tests/eval_agent.py` → **15/15 (100 %)**, ~47 000 tokens, **0
+  reintentos** (la pausa evitó el límite por completo). Evidencia regenerada en
+  `tests/resultados/eval_reporte.{md,json}` (fecha 2026-10-19).
+
 ## Cómo ejecutar el proyecto (resumen)
 
 ```bash
@@ -267,6 +297,6 @@ python scripts/verify_env.py
 python web/server.py          # web en http://127.0.0.1:8000
 python main.py                # CLI marca/modelo/año
 
-# 6. Evals / evidencia (meta >= 85%)
+# 6. Evals / evidencia (meta >= 85%; pausa 15s entre casos por defecto)
 python tests/eval_agent.py
 ```

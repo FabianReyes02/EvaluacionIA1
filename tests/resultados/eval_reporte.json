@@ -1,10 +1,10 @@
 {
-  "fecha": "2026-10-13T17:09:41",
+  "fecha": "2026-10-19T17:49:59",
   "meta": 85,
-  "aprobados": 14,
+  "aprobados": 15,
   "total": 15,
-  "porcentaje": 93.3,
-  "tokens": 45541,
+  "porcentaje": 100.0,
+  "tokens": 47012,
   "resultados": [
     {
       "id": "C01",
@@ -24,11 +24,13 @@
       "used_llm": true,
       "tokens": {
         "prompt": 4157,
-        "completion": 177,
-        "total": 4334
+        "completion": 180,
+        "total": 4337
       },
-      "duracion_s": 2.3,
-      "respuesta": "Para tu Suzuki Swift 2015 encontré:\n\n[ALT-01] Alternador 12V 90A - $289.990 - Stock: 7 unidades.\n\nAdemás, si la necesitas, hay [COR-01] Correa para alternador 1.130mm - $15.990 - Stock: 40 unidades.\n\n¿Quieres que te cotice alguno o necesitas más detalles técnicos del alternador?"
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 1.6,
+      "respuesta": "Para tu Suzuki Swift 2015 encontré:\n\n[ALT-01] Alternador 12V 90A - $289.990 - Stock: 7 unidades.\n\nTambién tengo la correa del alternador por si la necesitas:\n[COR-01] Correa alternador 1.130mm - $15.990 - Stock: 40 unidades.\n\n¿Quieres que te cotice alguno o necesitas más detalles técnicos?"
     },
     {
       "id": "C02",
@@ -51,7 +53,9 @@
         "completion": 175,
         "total": 4304
       },
-      "duracion_s": 25.6,
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 1.7,
       "respuesta": "Para tu Hyundai Accent 2016 encontré 1 repuesto:\n\n[FLT-02] Filtro de aire motor - $12.990 - Stock: 45 unidades.\n\nOjo: el inventario trae un filtro de aire, no de aceite. No tengo registro de un filtro de aceite para ese vehículo, así que no puedo darte precio ni stock de ese. ¿Quieres que busque otro tipo de repuesto o que revise el manual técnico?"
     },
     {
@@ -73,7 +77,9 @@
         "completion": 64,
         "total": 2053
       },
-      "duracion_s": 3.8,
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 0.6,
       "respuesta": "¡Hola! Con gusto te ayudo. Para buscar el repuesto correcto necesito saber:\n\n- Marca, modelo y año de tu auto\n- Qué repuesto necesitas (por ejemplo: alternador, pastillas de freno, filtro, kit de embrague, etc.)\n\n¿Me los pasas?"
     },
     {
@@ -92,11 +98,13 @@
       "used_llm": true,
       "tokens": {
         "prompt": 1992,
-        "completion": 49,
-        "total": 2041
+        "completion": 48,
+        "total": 2040
       },
-      "duracion_s": 14.8,
-      "respuesta": "¡Hola! Para buscar repuestos para tu Suzuki Swift necesito el **año** del vehículo (el inventario cubre Swift 2014 a 2019).\n\n¿De qué año es tu Swift?"
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 0.6,
+      "respuesta": "¡Hola! Para buscar repuestos para tu Suzuki Swift necesito el **año** del vehículo (el catálogo cubre desde 2014 a 2019).\n\n¿De qué año es tu Swift?"
     },
     {
       "id": "C05",
@@ -117,7 +125,9 @@
         "completion": 134,
         "total": 2132
       },
-      "duracion_s": 21.0,
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 0.7,
       "respuesta": "No cuento con repuestos para Ferrari 488 2020. Nuestro inventario cubre solo estos vehículos:\n\n- Suzuki Swift 2014-2019\n- Kia Rio 4 2017-2021\n- Hyundai Accent 2012-2019\n- Chevrolet Sail 2013-2019\n- Chevrolet Corsa 2005-2011\n- Chevrolet Spark 2011-2019\n\n¿Tienes alguno de estos modelos? Con gusto te busco el repuesto que necesites."
     },
     {
@@ -136,11 +146,13 @@
       "used_llm": true,
       "tokens": {
         "prompt": 1998,
-        "completion": 71,
-        "total": 2069
+        "completion": 66,
+        "total": 2064
       },
-      "duracion_s": 61.2,
-      "respuesta": "No tengo un \"Suzuki Corolla\" en mi catálogo. El Corolla es de Toyota, y Suzuki Swift es el modelo Suzuki que sí tengo en inventario (2014-2019).\n\n¿Podrías confirmarme la marca y el modelo exactos del vehículo? Así puedo buscar el repuesto correcto."
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 0.6,
+      "respuesta": "No tengo un \"Suzuki Corolla\" en mi catálogo. El Corolla es de Toyota, no de Suzuki, y no cuento con repuestos para Toyota en inventario.\n\n¿Podrías confirmarme la marca, modelo y año exactos de tu vehículo? Así puedo buscar el repuesto que necesitas."
     },
     {
       "id": "C07",
@@ -160,11 +172,13 @@
       "used_llm": true,
       "tokens": {
         "prompt": 4178,
-        "completion": 209,
-        "total": 4387
+        "completion": 189,
+        "total": 4367
       },
-      "duracion_s": 1.5,
-      "respuesta": "Para tu Hyundai Accent 2016 encontré 2 opciones:\n\n[ALT-02] Alternador 12V 110A - $329.990 - Stock: 4 unidades (STOCK BAJO, quedan menos de 5).\n[COR-01] Correa para alternador 1.130mm - $15.990 - Stock: 40 unidades.\n\nEl alternador [ALT-02] es el único disponible y tiene stock bajo, así que si lo necesitas conviene reservarlo pronto. ¿Quieres que te lo cotice o necesitas ayuda con algo más?"
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 21.1,
+      "respuesta": "Para tu Hyundai Accent 2016 encontré:\n\n[ALT-02] Alternador 12V 110A - $329.990 - Stock: 4 unidades (STOCK BAJO, quedan menos de 5).\n\nTambién está disponible la correa del alternador por si la necesitas:\n[COR-01] Correa alternador 1.130mm - $15.990 - Stock: 40 unidades.\n\n¿Quieres que te cotice alguno o ambos?"
     },
     {
       "id": "C08",
@@ -185,7 +199,9 @@
         "completion": 64,
         "total": 2053
       },
-      "duracion_s": 8.9,
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 2.1,
       "respuesta": "¡Hola! Solo puedo ayudarte con repuestos y vehículos. Para tu consulta sobre la capital de Francia, te sugiero consultar una enciclopedia.\n\n¿En qué puedo ayudarte con los repuestos de tu auto? Si me dices marca, modelo y año, puedo buscar el repuesto que necesites."
     },
     {
@@ -205,12 +221,14 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4558,
-        "completion": 241,
-        "total": 4799
+        "prompt": 4545,
+        "completion": 213,
+        "total": 4758
       },
-      "duracion_s": 86.0,
-      "respuesta": "Según el manual técnico (manual_alternador.pdf, pág. 1), el alternador 12V tiene una corriente nominal de 90A.\n\nDetalles adicionales del manual:\n- Voltaje nominal: 14V\n- Corriente nominal: 90A\n- Poles: 12\n- Polea compatible: correas de 5 y 6 canales según motor\n- Conexión de 3 cables: B+ (salida principal), D+ (luz de carga) y W (tacómetro)\n- Apto para motores de 1000 a 1500 cc\n\n¿Quieres que te busque el precio y stock de este alternador para algún vehículo en particular?"
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 24.2,
+      "respuesta": "Según el manual técnico (manual_alternador.pdf, pág. 1), el alternador de 90A tiene estas especificaciones:\n\n- Corriente nominal: 90A\n- Voltaje nominal: 14V\n- Poles: 12\n- Polea compatible: correas de 5 y 6 canales según motor\n- Conexión de 3 cables: B+ (salida principal), D+ (luz de carga) y W (tacómetro)\n\nEs apto para motores de 1000 a 1500 cc. ¿Quieres que te busque el precio y stock para algún vehículo en particular?"
     },
     {
       "id": "C10",
@@ -233,7 +251,9 @@
         "completion": 155,
         "total": 4309
       },
-      "duracion_s": 2.4,
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 19.8,
       "respuesta": "Sí, el [EMP-02] Kit embrague 215mm es compatible con tu Kia Rio 4 2018.\n\nDetalles:\n- Precio: $249.990\n- Stock: 9 unidades\n- Compatibilidad registrada: Hyundai Accent 2012-2019 y Kia Rio 4 2017-2021\n\n¿Quieres que lo cotice o que revise algo más?"
     },
     {
@@ -254,11 +274,13 @@
       "used_llm": true,
       "tokens": {
         "prompt": 1994,
-        "completion": 53,
-        "total": 2047
+        "completion": 78,
+        "total": 2072
       },
-      "duracion_s": 12.8,
-      "respuesta": "No tengo información sobre un repuesto con código XYZ-99 (no verificado) en nuestro inventario. Para ayudarte, ¿podrías indicarme la marca, modelo y año de tu vehículo, y qué tipo de repuesto necesitas? Así puedo buscar las opciones disponibles.\n\n[Guardrail] No puedo confirmar el repuesto XYZ-99: no existe en el inventario de la tienda."
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 2.9,
+      "respuesta": "No tengo información sobre un repuesto con código XYZ-99 (no verificado) en nuestro inventario. Para ayudarte, necesito que me indiques la marca, modelo y año de tu vehículo, y el tipo de repuesto que buscas (por ejemplo, alternador, pastillas de freno, filtro, etc.). Con esos datos puedo buscar en el inventario y confirmarte disponibilidad y precio.\n\n[Guardrail] No puedo confirmar el repuesto XYZ-99: no existe en el inventario de la tienda."
     },
     {
       "id": "C12",
@@ -272,19 +294,19 @@
       "detalles": [],
       "justificacion": "Tool de ESCRITURA real: genera data/exports/cotizacion_*.json.",
       "herramientas": [
-        "verificar_compatibilidad",
-        "verificar_compatibilidad",
         "exportar_cotizacion"
       ],
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 6669,
-        "completion": 259,
-        "total": 6928
+        "prompt": 4118,
+        "completion": 138,
+        "total": 4256
       },
-      "duracion_s": 57.4,
-      "respuesta": "Listo, cotización guardada:\n\n[ALT-01] Alternador 12V 90A — $289.990 (stock: 7)\n[FLT-01] Filtro de aceite 15600-44410 — $7.990 (stock: 60)\n\nTotal: $297.980\n\nArchivo: cotizacion_20261013_170642.json"
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 20.1,
+      "respuesta": "Listo, cotización guardada con 2 ítems por un total de $297.980.\n\nDetalle:\n- [ALT-01] Alternador\n- [FLT-01] Filtro\n\nEl archivo quedó en data/exports/cotizacion_20261019_174832.json. ¿Quieres que verifique compatibilidad con algún vehículo o que agregue más repuestos?"
     },
     {
       "id": "C13",
@@ -294,17 +316,23 @@
         "Guarda en tu memoria que mi auto es un Suzuki Swift 2015"
       ],
       "session": "eval-memoria",
-      "aprobado": false,
-      "detalles": [
-        "no uso la herramienta 'recordar_dato' (uso: ninguna)"
-      ],
+      "aprobado": true,
+      "detalles": [],
       "justificacion": "Escritura en memoria de LARGO PLAZO (IE3/IE4).",
-      "herramientas": [],
+      "herramientas": [
+        "recordar_dato"
+      ],
       "guardrails": [],
-      "used_llm": false,
-      "tokens": null,
-      "duracion_s": 138.0,
-      "respuesta": "El servicio de IA esta saturado por limite de tasa (plan gratuito Groq, 1000 tokens de salida/minuto). Reintente en un minuto; mientras tanto puedo buscar directo en el inventario. Modo sin IA (sin API key o fallo la llamada). Busqueda directa en el inventario para Suzuki Swift 2015:\n- [ALT-01] Alternador 12V 90A - $289990 - Stock: 7\n- [COR-01] Correa alternador 1.130mm - $15990 - Stock: 40\n- [EMP-05] Kit embrague 190mm - $189990 - Stock: 5\n- [FLT-01] Filtro de aceite 15600-44410 - $7990 - Stock: 60"
+      "used_llm": true,
+      "tokens": {
+        "prompt": 4101,
+        "completion": 81,
+        "total": 4182
+      },
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 19.7,
+      "respuesta": "Listo, guardé que tu auto es un Suzuki Swift 2015. ¿En qué más te ayudo?"
     },
     {
       "id": "C14",
@@ -325,7 +353,9 @@
         "completion": 33,
         "total": 2049
       },
-      "duracion_s": 21.0,
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 2.7,
       "respuesta": "Sí, según lo que tengo guardado, tu vehículo es un **Suzuki Swift 2015**. ¿En qué puedo ayudarte con él?"
     },
     {
@@ -347,7 +377,9 @@
         "completion": 21,
         "total": 2036
       },
-      "duracion_s": 0.6,
+      "reintentos": 0,
+      "rate_limited": false,
+      "duracion_s": 1.6,
       "respuesta": "¡Hola! Estoy muy bien, gracias. ¿En qué puedo ayudarte hoy con los repuestos?"
     }
   ]

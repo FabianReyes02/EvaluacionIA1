@@ -4,6 +4,11 @@ Uso (desde la raiz del proyecto):
     python tests/eval_agent.py                 # todos los casos
     python tests/eval_agent.py --solo C01,C07   # un subconjunto
     python tests/eval_agent.py --sin-reportar   # solo imprime
+    python tests/eval_agent.py --pausa 20       # espera S segundos entre casos
+
+La pausa entre casos existe para no agotar el cupo del plan gratuito de Groq
+(1000 tokens de salida/minuto): con `--pausa 0` se corre lo mas rapido posible
+(util solo con proveedor de pago o con cuota amplia).
 
 Salidas:
     tests/resultados/eval_reporte.json   detalle completo (insumo del informe)
@@ -39,6 +44,11 @@ from tools.inventory_lookup import ROOT, find_by_code, load_inventory  # noqa: E
 DATASET = Path(__file__).with_name("eval_dataset.json")
 RESULTADOS = Path(__file__).parent / "resultados"
 EXPORTS = ROOT / "data" / "exports"
+
+# Pausa por defecto entre casos (segundos): el plan gratuito de Groq limita a
+# 1000 tokens de salida/minuto y la suite completa lo agota; esperar entre casos
+# evita que un 429 tire un caso a modo sin IA. Configurable con --pausa.
+DEFAULT_PAUSA_S = 15.0
 
 
 def limpiar_memoria_eval() -> None:
@@ -115,6 +125,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluacion del agente")
     parser.add_argument("--solo", default="", help="ids separados por coma (ej: C01,C07)")
     parser.add_argument("--sin-reportar", action="store_true", help="no escribe archivos")
+    parser.add_argument(
+        "--pausa",
+        type=float,
+        default=DEFAULT_PAUSA_S,
+        help=(
+            "segundos de espera entre casos para respetar el cupo del plan "
+            f"gratuito de Groq (1000 OTPM); 0 = sin pausa (default: {DEFAULT_PAUSA_S:.0f})"
+        ),
+    )
     args = parser.parse_args()
 
     dataset = json.loads(DATASET.read_text(encoding="utf-8"))
@@ -132,8 +151,14 @@ def main() -> int:
 
     limpiar_memoria_eval()
     print(f"=== Evaluacion del agente ({len(casos)} casos) ===")
-    print(f"Memoria de eval aislada: {EVAL_MEMORY_FILE}\n")
-    for caso in casos:
+    print(f"Memoria de eval aislada: {EVAL_MEMORY_FILE}")
+    if args.pausa > 0:
+        print(f"Pausa entre casos: {args.pausa:.0f}s (cupo Groq 1000 OTPM)")
+    print()
+    for indice, caso in enumerate(casos):
+        if indice > 0 and args.pausa > 0:
+            print(f"        ... esperando {args.pausa:.0f}s antes del siguiente caso")
+            time.sleep(args.pausa)
         session = caso.get("session", f"eval-{caso['id']}")
         reset_session(session)  # aislamiento de la memoria de corto plazo
         memoria_before = len(LongTermMemory.all())
@@ -174,6 +199,8 @@ def main() -> int:
                 "guardrails": resultado["guardrails"],
                 "used_llm": resultado["used_llm"],
                 "tokens": resultado.get("tokens"),
+                "reintentos": resultado.get("reintentos", 0),
+                "rate_limited": resultado.get("rate_limited", False),
                 "duracion_s": round(duracion, 1),
                 "respuesta": respuesta,
             }
@@ -221,18 +248,19 @@ def _markdown(reporte: dict) -> str:
         f"({reporte['porcentaje']}%) — meta {reporte['meta']}%  ",
         f"**Tokens gastados:** {reporte['tokens']}",
         "",
-        "| Caso | Tipo | Resultado | Herramientas | Guardrails | Tokens | Detalle |",
-        "|---|---|---|---|---|---|---|",
+        "| Caso | Tipo | Resultado | Herramientas | Guardrails | Tokens | Reintentos | Detalle |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for r in reporte["resultados"]:
         lineas.append(
-            "| {id} | {tipo} | {ok} | {tools} | {g} | {t} | {d} |".format(
+            "| {id} | {tipo} | {ok} | {tools} | {g} | {t} | {retry} | {d} |".format(
                 id=r["id"],
                 tipo=r["tipo"],
                 ok="✅" if r["aprobado"] else "❌",
                 tools=", ".join(r["herramientas"]) or "—",
                 g=", ".join(r["guardrails"]) or "—",
                 t=(r["tokens"] or {}).get("total", "—"),
+                retry=r.get("reintentos", 0),
                 d="; ".join(r["detalles"]) or "cumple",
             )
         )
@@ -243,7 +271,7 @@ def _markdown(reporte: dict) -> str:
             f"- **Entrada:** {r['entradas']}",
             f"- **Por que se evalua:** {r['justificacion']}",
             f"- **Sesion:** `{r['session']}` | LLM: {r['used_llm']} | "
-            f"duración {r['duracion_s']}s",
+            f"duración {r['duracion_s']}s | reintentos 429: {r.get('reintentos', 0)}",
         ]
         if r["detalles"]:
             lineas.append(f"- **Fallas:** {'; '.join(r['detalles'])}")

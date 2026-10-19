@@ -33,7 +33,7 @@ llamar, con qué argumentos y cuándo detenerse.
 
 | Capa | Elección |
 |---|---|
-| Lenguaje | Python 3.11+ (probado en 3.13) |
+| Lenguaje | Python 3.11+ (probado en 3.12) |
 | Framework de agentes | **LangChain Agents** (`langchain.agents.create_agent`) |
 | LLM | Groq `qwen/qwen3.8-27b` (gratis) u OpenAI `gpt-4o-mini`, intercambiable por `LLM_PROVIDER` |
 | Vector store | **ChromaDB** persistente en `chroma_db/` |
@@ -106,12 +106,18 @@ stock. Sin API key cae a búsqueda directa sobre el CSV.
 ### 3. Evaluación (evidencia de pruebas)
 
 ```bash
-python tests/eval_agent.py                 # 15 casos, meta ≥ 85%
+python tests/eval_agent.py                 # 15 casos, meta ≥ 85% (pausa 15s entre casos)
 python tests/eval_agent.py --solo C01,C07  # subconjunto
+python tests/eval_agent.py --pausa 0       # sin pausa (proveedor de pago / cuota amplia)
 ```
 
+La pausa entre casos (`--pausa`, 15s por defecto) evita agotar el cupo del plan
+gratuito de Groq (1000 tokens de salida/minuto), que sin ella hace caer casos
+sueltos a modo sin IA por error 429.
+
 Salida: `tests/resultados/eval_reporte.md` y `.json` (tabla de resultados,
-herramientas usadas, guardrails activados, tokens y respuesta de cada caso).
+herramientas usadas, guardrails activados, reintentos por 429, tokens y
+respuesta de cada caso).
 
 ## 📁 Estructura
 
@@ -187,10 +193,11 @@ Implementadas como **código** en `agent/guardrails.py`, no solo en el prompt:
 
 ### Resiliencia ante límite de tasa (Groq gratuito, 1000 OTPM)
 
-Solo los errores 429 se reintentan (3 intentos, espera 20s/40s/60s) en
+Solo los errores 429 se reintentan (4 intentos, espera 20s/40s/60s/80s) en
 `agent/agent.py` + `agent/llm_client.py`; otros errores caen directo al
 fallback sin duplicar llamadas. Configurable con `AGENT_RETRY_ATTEMPTS` y
-`AGENT_RETRY_BASE_S`.
+`AGENT_RETRY_BASE_S`. Para los evals, la pausa `--pausa` entre casos evita
+llegar al límite.
 
 ## 🗺️ Diagramas
 
@@ -207,7 +214,7 @@ Orquestación, flujos feliz/negativa y memoria en [`docs/diagramas.md`](docs/dia
 | `GROQ_MODEL` / `OPENAI_MODEL` | Modelo a usar | `qwen/qwen3.8-27b` / `gpt-4o-mini` |
 | `EMBEDDING_MODEL` | Modelo de embeddings locales | `paraphrase-multilingual-MiniLM-L12-v2` |
 | `MEMORIA_FILE` / `MEMORIA_COLLECTION` | Ruta y colección de la memoria (los tests las aíslan) | `data/memory/memoria.jsonl` / `memoria` |
-| `AGENT_RETRY_ATTEMPTS` / `AGENT_RETRY_BASE_S` | Reintentos solo ante 429 y espera base (20s,40s,60s) | `3` / `20` |
+| `AGENT_RETRY_ATTEMPTS` / `AGENT_RETRY_BASE_S` | Reintentos solo ante 429 y espera base (20s,40s,60s,80s) | `4` / `20` |
 
 ## 📊 Resultado de las pruebas
 
@@ -217,7 +224,8 @@ Orquestación, flujos feliz/negativa y memoria en [`docs/diagramas.md`](docs/dia
 |---|---|
 | Casos aprobados | **15/15 (100 %)** — meta ≥ 85 % |
 | Cobertura | búsqueda, validación, negativas, alerta de stock, fuera de contexto, RAG, compatibilidad, guardrails, escritura y memoria entre sesiones |
-| Tokens | ~46 500 |
+| Tokens | ~47 000 |
+| Fecha | 2026-10-19 |
 
 Detalle por caso en [`tests/resultados/eval_reporte.md`](tests/resultados/eval_reporte.md).
 
