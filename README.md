@@ -220,6 +220,27 @@ EMAIL_DOMAINS_ALLOWLIST=""     # ej: "clientesur.cl" (vacío = sin restricción)
 La herramienta nunca dice "enviada" si no lo envió: sin credenciales responde
 *"preparada, no se envió"*, y si el SMTP falla informa el error.
 
+#### Probarlo sin usar tu correo real: sandbox de Mailtrap
+
+Mailtrap captura los mensajes en su panel y **no los entrega a nadie**, así que
+sirve para demostrar el envío real sin mandar nada a terceros (en el inbox del
+panel → *SMTP Credentials*):
+
+```bash
+EMAIL_MODE="smtp"
+SMTP_HOST="sandbox.smtp.mailtrap.io"
+SMTP_PORT="2525"
+SMTP_TLS="0"                   # 2525 sin cifrado (587 = STARTTLS, 465 = SSL)
+SMTP_SSL="0"
+SMTP_USER="<usuario del panel>"
+SMTP_PASSWORD="<contraseña del panel>"
+```
+
+> En modo `smtp` **no** se guarda copia `.eml` local (el `.eml` es el artefacto
+> del dry-run): quedan el JSON de la cotización y la traza en
+> `data/exports/envios.jsonl`, con `modo: "smtp"` y `enviado: true` **solo**
+> si el servidor SMTP aceptó el mensaje.
+
 ### Reglas de seguridad (no negociables)
 
 Implementadas como **código** en `agent/guardrails.py`, no solo en el prompt:

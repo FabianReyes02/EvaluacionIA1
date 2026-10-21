@@ -418,6 +418,47 @@ EvaluacionIA1/
   su cuota diaria se libera sola a ~140 tokens/min, así que la suite completa
   tarda varias horas en ejecutarse.
 
+## Actualización 2026-10-21 (cuarta tanda) — envío real por SMTP verificado
+
+### Qué se probó
+El camino completo de envío (no solo el dry-run) contra el **sandbox de
+Mailtrap**: los mensajes quedan atrapados en el panel y **no se entregan a
+ningún destinatario real**, así que se demuestra el envío SMTP sin mandar
+correo a terceros ni depender de un buzón personal.
+
+### Configuración usada (en `.env`, gitignored)
+```bash
+EMAIL_MODE="smtp"
+SMTP_HOST="sandbox.smtp.mailtrap.io"
+SMTP_PORT="2525"
+SMTP_TLS="0"
+SMTP_SSL="0"
+SMTP_USER="<usuario del panel>"
+SMTP_PASSWORD="<contraseña del panel>"
+```
+Los puertos 2525/587/465 de `sandbox.smtp.mailtrap.io` y el 587 de
+`smtp.gmail.com` están **abiertos** desde la máquina de desarrollo
+(`Test-NetConnection` → `TcpTestSucceeded: True` en todos), o sea que no hay
+bloqueo de red que impida el envío.
+
+### Resultado
+- Login SMTP: **OK** con las credenciales del panel.
+- Invocación real de la tool (`enviar_cotizacion_email.invoke({...})`):
+  *"Cotizacion ENVIADA a juan.perez@ejemplo.com con 1 item(s) por $289.990."*
+- `data/exports/envios.jsonl`: `modo: "smtp"`, `enviado: true` (el veredicto
+  solo es `true` si el servidor SMTP aceptó el mensaje, no es una suposición).
+
+### Hallazgos de esta tanda
+- En modo `smtp` **no** se guarda copia `.eml` local (el `.eml` es el artefacto
+  del dry-run); quedan el JSON de la cotización y la traza en `envios.jsonl`.
+- El `.env` local tenía el bloque de correo **duplicado** y con los
+  placeholders `<...>` sin reemplazar (había que quitarles los ángulos); se
+  dejó un solo bloque canónico. La contraseña del sandbox nunca se versiona
+  (`.env` está gitignored).
+- La tool se puede invocar **sin LLM**: la cuota diaria de Groq no bloquea la
+  prueba del envío, porque la decisión de llamar a la tool la toma el modelo y
+  el transporte SMTP es independiente del proveedor.
+
 ## Cómo ejecutar el proyecto (resumen)
 
 ```bash

@@ -37,11 +37,19 @@ corruptos, reindexa la colección desde el origen y reintenta una vez.
 #    data/exports/cotizacion_*.eml y responder "preparada, NO se envió".
 # 2) Para envío real: EMAIL_MODE="smtp" + SMTP_USER/SMTP_PASSWORD
 #    (Gmail/Outlook: contraseña de aplicación) y reintentar.
+#    Alternativa sin tocar un correo real: sandbox de Mailtrap
+#    (sandbox.smtp.mailtrap.io / 2525, SMTP_TLS="0"), que retiene los
+#    mensajes en su panel y no los entrega a nadie.
 # 3) Cada envío queda registrado en data/exports/envios.jsonl.
 ```
 
 La herramienta nunca afirma "enviada" si no la envió: sin credenciales responde
 *"preparada, no se envió"* y, si el SMTP falla, informa el error.
+
+**Verificado el 2026-10-21** con envío real contra el sandbox de Mailtrap: la
+tool respondió *"Cotizacion ENVIADA…"* y `envios.jsonl` registró
+`modo: "smtp"` y `enviado: true` (el veredicto solo es `true` si el servidor
+SMTP aceptó el mensaje).
 
 ## 2. Límite de tasa Groq (plan gratuito: 8 000 TPM y 200 000 TPD por modelo)
 

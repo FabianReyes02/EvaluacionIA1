@@ -36,7 +36,7 @@
 | D10 | Guardrails | Verificación **post-LLM** en `agent/guardrails.py`: todo código mencionado se contrasta con el CSV y todo stock crítico exige alerta | La regla es no negociable y un prompt no garantiza el comportamiento (el agente llegó a decir que guardó un dato sin llamar la tool) | Confiar solo en el system prompt |
 | D11 | Entorno | `pip` + `.venv` (Python 3.12 verificado el 2026-10-13; antes 3.13 en otra máquina) con `requirements.txt` congelado | `uv` no estaba disponible en la máquina de desarrollo; se priorizó poder ejecutar y evaluar el agente | Instalar uv y regenerar `uv.lock` (pendiente si se retoma D5) |
 | D12 | Resiliencia 429 | Reintentos con backoff **solo ante límite de tasa** en `agent/agent.py` + `agent/llm_client.py` (4 intentos, 20s/40s/60s/80s, env `AGENT_RETRY_ATTEMPTS`/`AGENT_RETRY_BASE_S`); mensaje amable + fallback CSV si se agotan. En evals, **pausa configurable `--pausa`** (15s por caso) para no agotar el cupo. **El límite diario de tokens (TPD) se detecta aparte** (`is_daily_limit_error`): no se reintenta (esperar 20-80s no sirve si la cuota reinicia a la medianoche) y el mensaje dice que la cuota se reinicia en X. **Suite reanudable**: `tests/eval_agent.py --parcial/--ensamblar` corre los casos de a uno y arma el reporte al final; un caso bloqueado por cuota queda pendiente, no aprobado ni fallado | El plan gratuito Groq limita a 8 000 TPM y **200 000 TPD por modelo** (no 1 000 OTPM como se creía; son 2 límites distintos y confundirlos hacía gastar 200 s por caso en reintentos inútiles). El TPD se agota en una ventana de ~24 h: reintentar no lo recupera, solo lo corre la ventana | Reintentar errores genéricos, solo confiar en el fallback seco, o perder la corrida completa cuando el cuota no alcanza |
-| D13 | Envío de cotizaciones por correo | Tool `enviar_cotizacion_email` (`agent/tools.py`) + módulo `tools/email_sender.py` sobre **SMTP de la stdlib** (`smtplib`), **dry-run por defecto**: sin credenciales el correo queda como `.eml` en `data/exports/` y no sale a internet. Allowlist opcional de dominios (`EMAIL_DOMAINS_ALLOWLIST`) y registro de cada envío en `data/exports/envios.jsonl` | Cero dependencias nuevas y cero API keys: SMTP con contraseña de aplicación funciona en Gmail/Outlook. El dry-run evita que un prototipo o una corrida de evals mande un correo real por error, y el `.eml` deja el cuerpo exacto para revisión. El cuerpo se arma con los precios del CSV, no con lo que dice el modelo | API de proveedor (SendGrid/Resend/Brevo: clave + dependencia extra), o envío real sin dry-run (un error del LLM llega al cliente) |
+| D13 | Envío de cotizaciones por correo | Tool `enviar_cotizacion_email` (`agent/tools.py`) + módulo `tools/email_sender.py` sobre **SMTP de la stdlib** (`smtplib`), **dry-run por defecto**: sin credenciales el correo queda como `.eml` en `data/exports/` y no sale a internet. Allowlist opcional de dominios (`EMAIL_DOMAINS_ALLOWLIST`) y registro de cada envío en `data/exports/envios.jsonl` | Cero dependencias nuevas y cero API keys: SMTP con contraseña de aplicación funciona en Gmail/Outlook. El dry-run evita que un prototipo o una corrida de evals mande un correo real por error, y el `.eml` deja el cuerpo exacto para revisión. El cuerpo se arma con los precios del CSV, no con lo que dice el modelo. **Verificado con envío real el 2026-10-21** contra el sandbox de Mailtrap (`modo: "smtp"`, `enviado: true` solo si el servidor SMTP aceptó el mensaje; los correos quedan atrapados en el panel de Mailtrap y no llegan a ningún destinatario real) | API de proveedor (SendGrid/Resend/Brevo: clave + dependencia extra), o envío real sin dry-run (un error del LLM llega al cliente) |
 | D14 | Robustez del RAG y contrato de las tools | `agent/rag.py` **se repara solo**: si la consulta a ChromaDB falla por segmentos corruptos, reindexa la colección desde el origen (PDF/CSV) y reintenta una vez. Las tools devuelven un mensaje **inequívoco**: el filtro por tipo distingue match exacto de aproximado (`coincide_tipo()`) y lo dice ("no hay 'filtro de aceite' exacto; la más cercana es FLT-02") | Un RAG caído **falla en silencio**: el chat sigue respondiendo, pero sin evidencia el agente degradaba a "no tengo información suficiente" y perdía el caso de eval (C09). Y una tool ambigua hace que el modelo ignore el dato que sí tenía (C02: nunca citaba FLT-02) | Dejar que la tool devuelva un listado sin contexto, o que el RAG degrade sin avisar, o "arreglar" el prompt para tapar un bug de la tool |
 
 Convencion de commits: mensajes simples y en espanol durante todo el semestre.
@@ -259,6 +259,20 @@ EvaluacionIA1/
   corrida histórica de 15/15 del 2026-10-19 queda archivada). La corrida con
   `qwen/qwen3.8-27b` sigue por partes: su cuota diaria se libera sola a
   ~140 tokens/min.
+- **2026-10-21 (cuarta tanda) — envío real por SMTP verificado.** Se probó el
+  camino completo de envío contra el **sandbox de Mailtrap**
+  (`sandbox.smtp.mailtrap.io:2525`, sin cifrado): los mensajes quedan atrapados
+  en el panel de Mailtrap y **no se entrega a ningún destinatario real**, así
+  que se puede demostrar el envío SMTP sin mandar correo a terceros. Login
+  OK con las credenciales del panel y envío OK: la tool respondió
+  *"Cotizacion ENVIADA a juan.perez@ejemplo.com con 1 item(s) por $289.990"*
+  y `data/exports/envios.jsonl` registró `modo: "smtp"`, `enviado: true`
+  (el veredicto solo es `true` si el servidor SMTP aceptó el mensaje). De paso
+  se detectó que en modo `smtp` **no** se guarda copia `.eml` local (el `.eml`
+  es el artefacto del dry-run): quedan el JSON de la cotización y la traza en
+  `envios.jsonl`. Además se limpió el `.env` local, que tenía el bloque de
+  correo duplicado y los placeholders `<...>` sin reemplazar (la contraseña
+  del sandbox nunca se versiona: `.env` está gitignored).
 
 ## 8. En progreso (actualizado 2026-10-21)
 
@@ -298,6 +312,9 @@ EvaluacionIA1/
   modo dry-run (tool `enviar_cotizacion_email`: validación del correo,
   allowlist de dominios, `.eml` en `data/exports/`, registro en
   `envios.jsonl`, alerta de stock en el cuerpo) y con el caso de eval **C16**
-  aprobado. Para envío real: `SMTP_USER`/`SMTP_PASSWORD` en `.env`
-  (Gmail/Outlook: contraseña de aplicación) con `EMAIL_MODE="smtp"`.
+  aprobado. **Envío real verificado el 2026-10-21** contra el sandbox de
+  Mailtrap (`sandbox.smtp.mailtrap.io:2525`, sin cifrado): la tool respondió
+  *"Cotizacion ENVIADA…"* y `envios.jsonl` quedó con `modo: "smtp"` y
+  `enviado: true`. Para enviar a una casilla real: `SMTP_USER`/`SMTP_PASSWORD`
+  en `.env` (Gmail/Outlook: contraseña de aplicación) con `EMAIL_MODE="smtp"`.
 - **Sigue pendiente:** commit + push y entrega final (AVA + email docente).
