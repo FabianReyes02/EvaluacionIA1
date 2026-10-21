@@ -273,6 +273,21 @@ EvaluacionIA1/
   `envios.jsonl`. Además se limpió el `.env` local, que tenía el bloque de
   correo duplicado y los placeholders `<...>` sin reemplazar (la contraseña
   del sandbox nunca se versiona: `.env` está gitignored).
+- **2026-10-21 (quinta tanda) — la interfaz web pasa a pestañas.** El
+  inventario estaba apilado **debajo del chat** y hundía la conversación en
+  scroll. Ahora `web/static/index.html` tiene dos paneles conmutables:
+  **💬 Chat** (búsqueda rápida + conversación) y **📦 Inventario** (tabla de
+  repuestos, con el contador de stock en la pestaña). Es solo HTML/CSS/JS: no
+  cambia la API del servidor (`/api/chat`, `/api/inventory`, `/api/health`).
+- **La cuota del plan Groq es una ventana MÓVIL de 24 h, no un reinicio
+  diario.** El contador `Used` del TPD (200 000 tokens/día **por modelo**) sube
+  y baja según las peticiones van saliendo de la ventana; por eso el mensaje
+  *"try again in Xm"* salta de 4 m a 22 m entre intentos. Verificado el
+  2026-10-21: `qwen/qwen3.8-27b` estaba en ~199 000/200 000 (un turno del
+  agente pide ~3 200 tokens → no entra) mientras que
+  `openai/gpt-oss-120b` sí tenía margen (C16 aprobado con envío SMTP real:
+  5 107 tokens). **Cada modelo tiene su propio cubo**: el agotamiento de uno
+  no afecta al otro.
 
 ## 8. En progreso (actualizado 2026-10-21)
 

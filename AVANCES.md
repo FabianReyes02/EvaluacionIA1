@@ -459,6 +459,41 @@ bloqueo de red que impida el envío.
   prueba del envío, porque la decisión de llamar a la tool la toma el modelo y
   el transporte SMTP es independiente del proveedor.
 
+## Actualización 2026-10-21 (quinta tanda) — interfaz por pestañas y C16 con envío real
+
+### Interfaz web: el inventario pasa a su propia pestaña
+- Antes: una sola columna con tres tarjetas apiladas (búsqueda rápida → chat →
+  inventario), así que el catálogo quedaba **debajo** del chat y había que
+  hacer scroll para verlo.
+- Ahora: pestañas **💬 Chat** (búsqueda rápida + conversación con el agente) y
+  **📦 Inventario** (tabla de repuestos con alertas de stock; el contador de
+  filas va en la propia pestaña).
+- Implementado en `web/static/index.html` con paneles `#panel-chat` /
+  `#panel-inv` y un `switch` de clases `activa`; **no cambia la API** del
+  servidor (`/api/chat`, `/api/inventory`, `/api/health` siguen igual).
+- Verificado: servidor arriba, `/` responde 200 con el marcado nuevo,
+  `/api/inventory` devuelve las 12 filas, sin referencias JS rotas y con la
+  sintaxis del script validada (`node --check`).
+
+### C16 aprobado con envío SMTP **real**
+- `python tests/eval_agent.py --solo C16 --sin-reportar` con
+  `GROQ_MODEL=openai/gpt-oss-120b` y `EMAIL_MODE="smtp"` → **1/1**,
+  5 107 tokens. Respuesta del agente: *"Cotizacion ENVIADA a
+  juan.perez@ejemplo.com con 1 item(s) por $289.990"* y registro en
+  `envios.jsonl` con `modo: "smtp"`, `enviado: true`.
+- `--sin-reportar` deja intacta la evidencia principal (16/16) mientras se
+  re-corre la suite completa por partes.
+
+### Lo que aprendimos de la cuota (TPD)
+- El límite diario de Groq (200 000 tokens **por modelo**) es una **ventana
+  móvil de 24 h**, no un reinicio a medianoche: el contador `Used` sube y baja
+  (199 497 → 197 385 → 199 719 → 198 987 en las 14 iteraciones del loop) y el
+  mensaje *"try again in Xm"* salta entre 4 y 22 minutos.
+- Con `qwen/qwen3.8-27b` en ~199 000/200 000 quedan ~1 000 tokens libres: entra
+  un ping de 40 tokens pero **no** un turno del agente (~3 200 tokens).
+- `openai/gpt-oss-120b` sí tenía margen → se usó para C16 y para re-correr la
+  suite por partes. Cada modelo tiene su propio cubo.
+
 ## Cómo ejecutar el proyecto (resumen)
 
 ```bash
