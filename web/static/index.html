@@ -161,12 +161,15 @@ $("quickForm").addEventListener("submit", e => {
 async function loadHealth() {
   try {
     const h = await api("/api/health");
-    $("status").textContent = h.llm_disponible
+    const correo = h.correo_modo === "smtp"
+      ? "correo: SMTP (envío real)"
+      : "correo: simulado (dry-run)";
+    $("status").textContent = (h.llm_disponible
       ? `IA: ${h.proveedor} · ${h.modelo}`
-      : "modo sin IA (sin API key)";
+      : "modo sin IA (sin API key)") + ` · ${correo}`;
     const c = h.indice && h.indice.colecciones ? h.indice.colecciones : {};
     const idx = Object.entries(c).map(([k,v]) => `${k}: ${v}`).join(" · ");
-    if (idx) $("status").title = `herramientas: ${h.herramientas.join(", ")}\níndice: ${idx}`;
+    if (idx) $("status").title = `herramientas: ${h.herramientas.join(", ")}\níndice: ${idx}\n${correo}`;
   } catch (e) { $("status").textContent = "sin conexión"; }
 }
 

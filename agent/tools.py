@@ -9,12 +9,19 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime
+from pathlib import Path
 
 from langchain_core.tools import tool
 
 from agent.memory import LongTermMemory
+from tools.email_sender import (
+    enviar_cotizacion_documento,
+    formatear_precio,
+    validar_email,
+)
 from tools.inventory_lookup import (
     ROOT,
+    coincide_tipo,
     diagnose_missing,
     find_by_code,
     format_part,
@@ -60,6 +67,22 @@ def buscar_repuesto(marca: str, modelo: str, anio: str, tipo_repuesto: str = "")
     """
     inventory = get_inventory()
     results = search_parts(inventory, marca, modelo, anio, tipo=tipo_repuesto)
+    if tipo_repuesto and results:
+        exactos = [p for p in results if coincide_tipo(p, tipo_repuesto)]
+        if not exactos:
+            # Solo hay coincidencias PARCIALES (ej: 'filtro de aceite' ->
+            # 'filtro de aire motor' cumple solo 'filtro'). Se avisa para que el
+            # agente cite el codigo como alternativa y no lo presente como el
+            # repuesto exacto que pidio el cliente.
+            lineas = "\n".join(f"- {format_part(p)}" for p in results)
+            codigos = ", ".join(p["codigo"] for p in results)
+            return (
+                f"No hay '{tipo_repuesto}' exacto para {marca} {modelo} {anio}. "
+                f"La coincidencia mas cercana en el inventario es:\n{lineas}\n"
+                f"Cita el codigo ({codigos}) como alternativa y aclara al cliente "
+                f"que no es exactamente el tipo que pidio."
+            )
+        results = exactos
     if not results:
         # Si el filtro por tipo no matcheo, reintenta sin el filtro para
         # distinguir "no existe ese tipo" de "no hay para ese vehiculo".
@@ -193,20 +216,21 @@ def recuperar_memoria(consulta: str) -> str:
 
 
 # --------------------------------------------------------------------------
-# Tool de escritura
+# Cotizacion: documento en disco y envio por correo
 # --------------------------------------------------------------------------
-@tool
-def exportar_cotizacion(codigos: list[str], cliente: str = "") -> str:
-    """Escribe en disco la cotizacion de los repuestos indicados (escritura real).
+def _construir_cotizacion(
+    codigos: list[str],
+    cliente: str = "",
+    vehiculo: str = "",
+) -> tuple[dict, list[str]]:
+    """Arma el documento de cotizacion desde el CSV (fuente unica de verdad).
 
-    ``codigos`` es la lista de codigos del inventario a cotizar (ej:
-    ['ALT-01', 'FLT-01']). Crea un archivo JSON en data/exports/ con fecha,
-    cliente, detalle y total. Usala SOLO cuando el cliente pida cotizar,
-    guardar o enviar la cotizacion.
+    Devuelve (documento, codigos_faltantes). Precios y stock se leen siempre
+    del inventario, nunca de lo que dijo el modelo.
     """
     inventory = get_inventory()
     items, faltantes = [], []
-    for code in codigos:
+    for code in codigos or []:
         item = find_by_code(inventory, str(code))
         if item is None:
             faltantes.append(str(code))
@@ -220,15 +244,10 @@ def exportar_cotizacion(codigos: list[str], cliente: str = "") -> str:
                     "stock_status": stock_status(item),
                 }
             )
-    if not items:
-        return f"Ningun codigo es valido ({', '.join(codigos) or 'vacio'}). No se exporto nada."
-
-    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = EXPORT_DIR / f"cotizacion_{stamp}.json"
     documento = {
         "fecha": datetime.now().isoformat(timespec="seconds"),
         "cliente": cliente or "no indicado",
+        "vehiculo": vehiculo or "no indicado",
         "items": items,
         "total": sum(i["precio"] for i in items),
         "avisos": (
@@ -236,11 +255,111 @@ def exportar_cotizacion(codigos: list[str], cliente: str = "") -> str:
             + [f"stock bajo: {i['codigo']}" for i in items if i["stock_status"] != "ok"]
         ),
     }
+    return documento, faltantes
+
+
+def _guardar_cotizacion(documento: dict) -> Path:
+    """Escribe el JSON de la cotizacion en data/exports/ y devuelve la ruta."""
+    EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    path = EXPORT_DIR / f"cotizacion_{stamp}.json"
     path.write_text(json.dumps(documento, ensure_ascii=False, indent=2), encoding="utf-8")
-    aviso = f" Avisos: {'; '.join(documento['avisos'])}." if documento["avisos"] else ""
+    return path
+
+
+@tool
+def exportar_cotizacion(codigos: list[str], cliente: str = "") -> str:
+    """Escribe en disco la cotizacion de los repuestos indicados (escritura real).
+
+    ``codigos`` es la lista de codigos del inventario a cotizar (ej:
+    ['ALT-01', 'FLT-01']). Crea un archivo JSON en data/exports/ con fecha,
+    cliente, detalle y total. Usala SOLO cuando el cliente pida cotizar,
+    guardar o enviar la cotizacion.
+    """
+    documento, _ = _construir_cotizacion(codigos, cliente)
+    if not documento["items"]:
+        return (
+            f"Ningun codigo es valido ({', '.join(codigos) or 'vacio'}). "
+            "No se exporto nada."
+        )
+
+    path = _guardar_cotizacion(documento)
+    avisos = documento["avisos"]
+    aviso = f" Avisos: {'; '.join(avisos)}." if avisos else ""
     return (
-        f"Cotizacion guardada en {path} con {len(items)} item(s) "
+        f"Cotizacion guardada en {path} con {len(documento['items'])} item(s) "
         f"por ${documento['total']}.{aviso}"
+    )
+
+
+@tool
+def enviar_cotizacion_email(
+    codigos: list[str],
+    email_cliente: str,
+    cliente: str = "",
+    vehiculo: str = "",
+    mensaje: str = "",
+) -> str:
+    """Envia por correo electronico la cotizacion de los repuestos indicados.
+
+    Usala cuando el cliente pida ENVIAR la cotizacion por correo (ej: "mandame
+    la cotizacion a juan@correo.com"). ``codigos`` son los codigos del
+    inventario a cotizar (ej: ['ALT-01']) y ``email_cliente`` la direccion de
+    destino. ``vehiculo`` y ``mensaje`` son opcionales.
+
+    El cuerpo del correo se arma con los precios y el stock del INVENTORIO,
+    nunca con lo que diga el modelo. Si el envio por SMTP no esta configurado,
+    la cotizacion queda PREPARADA en un archivo .eml y NO se sale a internet:
+    en ese caso informa que quedo preparada, jamas que fue enviada.
+
+    Si el cliente no dio su direccion de correo, NO la inventes ni la deduzcas:
+    pidela primero y despues llama esta herramienta.
+    """
+    ok, motivo = validar_email(email_cliente)
+    if not ok:
+        return (
+            f"No puedo enviar la cotizacion por correo: {motivo}. "
+            "Pidele al cliente su direccion de correo (ej: juan@correo.com) "
+            "y vuelve a llamar esta herramienta."
+        )
+
+    documento, _ = _construir_cotizacion(codigos, cliente, vehiculo)
+    if not documento["items"]:
+        return (
+            f"Ningun codigo es valido ({', '.join(codigos or []) or 'vacio'}). "
+            "No se envio nada."
+        )
+
+    path = _guardar_cotizacion(documento)
+    resultado = enviar_cotizacion_documento(
+        documento,
+        email_cliente.strip(),
+        vehiculo=vehiculo,
+        mensaje=mensaje,
+        adjunto=path.read_bytes(),
+        nombre_adjunto=path.name,
+    )
+
+    items = len(documento["items"])
+    total = formatear_precio(documento["total"])
+    avisos = documento["avisos"]
+    detalle_avisos = f" Avisos: {'; '.join(avisos)}." if avisos else ""
+
+    if resultado["enviado"]:
+        return (
+            f"Cotizacion ENVIADA a {email_cliente.strip()} con {items} item(s) "
+            f"por ${total}.{detalle_avisos} (Copia de la cotizacion en {path})"
+        )
+    if resultado["ruta"]:
+        return (
+            f"Cotizacion PREPARADA, NO se envio: {resultado['detalle']} "
+            f"Contiene {items} item(s) por ${total}.{detalle_avisos} "
+            "Informa al cliente que quedo lista y pendiente de envio."
+        )
+    return (
+        f"No pude enviar la cotizacion a {email_cliente.strip()}: "
+        f"{resultado['detalle']} La cotizacion quedo guardada en {path}."
+        f"{detalle_avisos}"
     )
 
 
@@ -251,4 +370,5 @@ ALL_TOOLS = [
     recordar_dato,
     recuperar_memoria,
     exportar_cotizacion,
+    enviar_cotizacion_email,
 ]

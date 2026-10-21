@@ -3,7 +3,7 @@
     "nombre": "Evaluacion del agente Repuestos Sur",
     "version": "1.0",
     "meta_aciertos": 85,
-    "descripcion": "15 casos que cubren busqueda, validacion, guardrails, RAG sobre manuales, escritura y memoria (corto y largo plazo). El caso C14 depende de que C13 se haya ejecutado antes: prueba la memoria entre sesiones."
+    "descripcion": "16 casos que cubren busqueda, validacion, guardrails, RAG sobre manuales, escritura (cotizacion en disco y envio por correo) y memoria (corto y largo plazo). El caso C14 depende de que C13 se haya ejecutado antes: prueba la memoria entre sesiones."
   },
   "casos": [
     {
@@ -177,6 +177,18 @@
         "no_codigos_inventados": true
       },
       "justificacion": "Respuesta cortes sin llamar herramientas ni inventar datos."
+    },
+    {
+      "id": "C16",
+      "tipo": "escritura_correo",
+      "descripcion": "El cliente pide cotizar y enviar la cotizacion por correo",
+      "entradas": ["Cotiza el alternador ALT-01 y envíamela por correo a juan.perez@ejemplo.com"],
+      "esperado": {
+        "debe_usar_tool": ["enviar_cotizacion_email"],
+        "genera_archivo": true,
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Tool de ENVIO: arma el correo con los precios del CSV y deja la cotización en data/exports/ (modo dry-run por defecto: no sale a internet)."
     }
   ]
 }

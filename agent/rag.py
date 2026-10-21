@@ -69,6 +69,14 @@ def _split(text: str) -> list[str]:
     return splitter.split_text(text)
 
 
+def _borrar_coleccion(name: str) -> None:
+    """Borra una coleccion; si no existe (indice a medio construir), no falla."""
+    try:
+        get_client().delete_collection(name)
+    except Exception:
+        pass
+
+
 def ingest_manuales(force: bool = False) -> dict:
     """Indexa los PDF de ``data/external/manuales``. Idempotente salvo ``force``."""
     collection = get_collection(COL_MANUALS)
@@ -76,7 +84,7 @@ def ingest_manuales(force: bool = False) -> dict:
         return {"coleccion": COL_MANUALS, "documentos": collection.count(), "nuevo": False}
 
     if force:
-        get_client().delete_collection(COL_MANUALS)
+        _borrar_coleccion(COL_MANUALS)
         collection = get_collection(COL_MANUALS)
 
     pdfs = sorted(MANUALS_DIR.glob("*.pdf"))
@@ -116,7 +124,7 @@ def ingest_inventario(force: bool = False) -> dict:
         return {"coleccion": COL_INVENTORY, "documentos": collection.count(), "nuevo": False}
 
     if force:
-        get_client().delete_collection(COL_INVENTORY)
+        _borrar_coleccion(COL_INVENTORY)
         collection = get_collection(COL_INVENTORY)
 
     rows = load_inventory(INVENTORY_PATH)
@@ -151,6 +159,20 @@ def ensure_index(force: bool = False) -> dict:
     }
 
 
+def _reindexar(coleccion: str) -> None:
+    """Reconstruye una coleccion desde cero (indice inconsistente).
+
+    ChromaDB puede dejar segmentos huerfanos en ``chroma_db/`` (por ejemplo si
+    dos procesos tocan el indice a la vez o si una coleccion se borro a mano).
+    En ese caso la consulta falla con un error interno de segmentos; rehacer la
+    coleccion desde el origen (PDF/CSV) lo deja operativo otra vez.
+    """
+    if coleccion == COL_MANUALS:
+        ingest_manuales(force=True)
+    elif coleccion == COL_INVENTORY:
+        ingest_inventario(force=True)
+
+
 def search(collection: str, query: str, k: int = 4) -> list[dict]:
     """Busqueda por similitud. Devuelve [{documento, metadatos, distancia}]."""
     query = (query or "").strip()
@@ -159,7 +181,14 @@ def search(collection: str, query: str, k: int = 4) -> list[dict]:
     col = get_collection(collection)
     if col.count() == 0:
         return []
-    res = col.query(query_texts=[query], n_results=min(k, col.count()))
+    try:
+        res = col.query(query_texts=[query], n_results=min(k, col.count()))
+    except Exception as exc:
+        # Indice roto: se reindexa desde el origen y se reintenta una vez.
+        print(f"[rag] la consulta fallo ({exc.__class__.__name__}); reindexando '{collection}'...")
+        _reindexar(collection)
+        col = get_collection(collection)
+        res = col.query(query_texts=[query], n_results=min(k, col.count()))
     out = []
     for doc, meta, dist in zip(
         res["documents"][0], res["metadatas"][0], res["distances"][0]

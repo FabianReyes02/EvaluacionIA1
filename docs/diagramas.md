@@ -10,7 +10,7 @@ flowchart TD
     U[Usuario: chat web / CLI] --> CTX[Contexto: catalogo CSV + memoria largo plazo + resumen sesion]
     CTX --> LLM[LLM Groq qwen-27b / OpenAI gpt-4o-mini<br/>planifica: elige tool y argumentos]
     LLM --> T{Tool llamada?}
-    T -- si --> TJ[buscar_repuesto / buscar_en_manual / verificar_compatibilidad / recordar_dato / recuperar_memoria / exportar_cotizacion]
+    T -- si --> TJ[buscar_repuesto / buscar_en_manual / verificar_compatibilidad / recordar_dato / recuperar_memoria / exportar_cotizacion / enviar_cotizacion_email]
     TJ --> OBS[Observacion: texto plano de la tool]
     OBS --> LLM
     T -- no --> RESP[Respuesta del modelo]
@@ -74,6 +74,38 @@ flowchart LR
     S1[Sesion web / eval-memoria: recordar_dato vehiculo] --> J[data/memory/memoria.jsonl + coleccion Chroma memoria]
     J --> S2[Sesion nueva eval-memoria-2: recuperar_memoria]
     S2 --> R[Respuesta usa dato recordado sin pedirlo de nuevo]
-    LLM429[LLM 429 OTPM 1000 tok/min] --> RT[Retry 3 intentos 20s/40s/60s solo 429<br/>AGENT_RETRY_ATTEMPTS / AGENT_RETRY_BASE_S]
+    LLM429[LLM 429: TPM 8000 tok/min o TPD 200000 tok/dia por modelo] --> RT[Retry 3 intentos 20s/40s/60s solo 429 por minuto<br/>AGENT_RETRY_ATTEMPTS / AGENT_RETRY_BASE_S]
     RT --> FB[Fallback: mensaje saturacion + busqueda directa CSV]
+    LLM429 --> TPD{TPD?} -->|si, cuota diaria| NO[Sin reintento: la cuota se reinicia en X]
 ```
+
+## 5. Flujo: envío de cotización por correo (D13)
+
+```mermaid
+sequenceDiagram
+    participant C as Cliente
+    participant A as Agente create_agent
+    participant E as enviar_cotizacion_email
+    participant CSV as inventory.csv
+    participant S as SMTP (smtplib)
+    C->>A: cotiza ALT-01 y envíamela a juan@ejemplo.com
+    A->>E: enviar_cotizacion_email([ALT-01], juan@ejemplo.com, cliente, vehiculo)
+    E->>CSV: relee precios y stock (fuente única)
+    CSV-->>E: ALT-01 $289.990 stock 7
+    E->>E: valida el correo + allowlist de dominios
+    alt EMAIL_MODE=smtp
+        E->>S: SMTP con TLS + login
+        S-->>E: aceptado
+        E-->>A: "Cotización ENVIADA a juan@ejemplo.com"
+    else modo dry (por defecto)
+        E->>E: guarda data/exports/cotizacion_*.eml
+        E-->>A: "Cotización PREPARADA, NO se envió"
+    end
+    E->>E: registra el envío en data/exports/envios.jsonl
+    A-->>C: resultado literal de la tool (nunca "enviada" sin serlo)
+```
+
+Reglas del flujo: el cuerpo del correo se arma con los precios del CSV (nunca
+con lo que dice el modelo), sin credenciales no sale nada a internet (queda el
+`.eml`), y la respuesta al cliente reproduce lo que la tool devolvió realmente.
+

@@ -106,18 +106,31 @@ stock. Sin API key cae a búsqueda directa sobre el CSV.
 ### 3. Evaluación (evidencia de pruebas)
 
 ```bash
-python tests/eval_agent.py                 # 15 casos, meta ≥ 85% (pausa 15s entre casos)
+python tests/eval_agent.py                 # 16 casos, meta ≥ 85% (pausa 15s entre casos)
 python tests/eval_agent.py --solo C01,C07  # subconjunto
 python tests/eval_agent.py --pausa 0       # sin pausa (proveedor de pago / cuota amplia)
 ```
 
 La pausa entre casos (`--pausa`, 15s por defecto) evita agotar el cupo del plan
-gratuito de Groq (1000 tokens de salida/minuto), que sin ella hace caer casos
-sueltos a modo sin IA por error 429.
+gratuito de Groq (**8 000 tokens/min y 200 000 tokens/día por modelo**), que sin
+ella hace caer casos sueltos a modo sin IA por error 429.
+
+Si el **cuota diaria** no alcanza para la suite completa, se puede correr por
+partes (el runner reanuda donde quedó):
+
+```bash
+python tests/eval_agent.py --parcial tests/resultados/eval_parcial.jsonl  # corre y guarda caso a caso
+python tests/eval_agent.py --ensamblar tests/resultados/eval_parcial.jsonl # arma el reporte final
+```
+
+Un caso que no alcanza a llegar al LLM por límite de cuota del proveedor queda
+**pendiente** (no cuenta como aprobado ni como fallado) y la corrida se detiene
+para no gastar cuota en casos que tampoco podrían ejecutarse.
 
 Salida: `tests/resultados/eval_reporte.md` y `.json` (tabla de resultados,
 herramientas usadas, guardrails activados, reintentos por 429, tokens y
-respuesta de cada caso).
+respuesta de cada caso). La corrida histórica del 2026-10-19 (suite de 15
+casos) queda archivada en `eval_reporte_15casos_qwen_2026-10-19.{md,json}`.
 
 ## 📁 Estructura
 
@@ -125,7 +138,7 @@ respuesta de cada caso).
 EvaluacionIA1/
 ├── agent/
 │   ├── agent.py          Orquestador: crea el agente y ejecuta cada interaccion
-│   ├── tools.py          6 herramientas (consulta / escritura / memoria)
+│   ├── tools.py          7 herramientas (consulta / escritura / memoria)
 │   ├── memory.py         Memoria de corto y largo plazo
 │   ├── rag.py            Ingesta PDF+CSV -> embeddings -> ChromaDB
 │   ├── guardrails.py     Verificacion POST-LLM (codigos y stock)
@@ -133,16 +146,17 @@ EvaluacionIA1/
 │   ├── llm_client.py     Cliente LLM intercambiable (Groq/OpenAI)
 │   └── trace.py          Log JSONL de las decisiones (logs/trace.jsonl)
 ├── tools/
-│   └── inventory_lookup.py   Busqueda y diagnostico sobre el CSV
+│   ├── inventory_lookup.py   Busqueda y diagnostico sobre el CSV
+│   └── email_sender.py       Armado y envio del correo (SMTP, dry-run por defecto)
 ├── ingestion/
 │   └── ingest.py         CLI de ingesta RAG
 ├── web/
 │   ├── server.py         Servidor HTTP + API JSON
 │   └── static/index.html Interfaz (chat + búsqueda + inventario)
 ├── tests/
-│   ├── eval_dataset.json 15 casos con lo esperado y su justificación
+│   ├── eval_dataset.json 16 casos con lo esperado y su justificación
 │   ├── eval_agent.py     Ejecuta la suite y genera el reporte
-│   └── resultados/       Evidencia generada
+│   └── resultados/       Evidencia generada (eval_reporte.{md,json} + corrida 15/15 archivada)
 ├── docs/
 │   ├── diagramas.md      Orquestación y flujos (Mermaid, IE7/IE9)
 │   └── CHECKLIST_ENTREGA.md  Verificación + entregables AVA/email
@@ -153,7 +167,7 @@ EvaluacionIA1/
 │   ├── internal/inventory.csv
 │   ├── external/manuales/*.pdf
 │   ├── memory/           Memoria persistente del agente (JSONL)
-│   └── exports/          Cotizaciones escritas por el agente
+│   └── exports/          Cotizaciones escritas por el agente (JSON, .eml, envios.jsonl)
 ├── main.py               CLI interactiva
 ├── agents.md             Memoria de decisiones del equipo
 └── requirements.txt      Dependencias congeladas
@@ -180,6 +194,31 @@ EvaluacionIA1/
 | `recuperar_memoria` | consulta | Hechos recordados de sesiones anteriores |
 | `recordar_dato` | **escritura** | Persiste un dato del cliente en largo plazo |
 | `exportar_cotizacion` | **escritura** | Escribe un JSON en `data/exports/` |
+| `enviar_cotizacion_email` | **escritura** | Envía la cotización por correo (SMTP; dry-run por defecto) |
+
+### 📧 Envío de cotizaciones por correo
+
+El agente pide la dirección del cliente si no se la dieron y luego llama
+`enviar_cotizacion_email`, que arma el cuerpo del correo **con los precios y el
+stock del CSV** (nunca con lo que dice el modelo), adjunta el JSON de la
+cotización y registra el envío en `data/exports/envios.jsonl`.
+
+Por defecto el envío es **simulado (dry-run)**: el correo queda como `.eml` en
+`data/exports/` y no sale a internet. Para enviar de verdad, configura en `.env`:
+
+```bash
+EMAIL_MODE="smtp"
+SMTP_HOST="smtp.gmail.com"     # Outlook: smtp.office365.com
+SMTP_PORT="587"
+SMTP_USER="tu-correo@gmail.com"
+SMTP_PASSWORD="..."             # Gmail/Outlook: CONTRASEÑA DE APLICACIÓN
+SMTP_TLS="1"                   # 1 = STARTTLS (587), SMTP_SSL="1" = 465
+EMAIL_FROM="Repuestos Sur <cotizaciones@repuestosur.cl>"
+EMAIL_DOMAINS_ALLOWLIST=""     # ej: "clientesur.cl" (vacío = sin restricción)
+```
+
+La herramienta nunca dice "enviada" si no lo envió: sin credenciales responde
+*"preparada, no se envió"*, y si el SMTP falla informa el error.
 
 ### Reglas de seguridad (no negociables)
 
@@ -191,13 +230,20 @@ Implementadas como **código** en `agent/guardrails.py`, no solo en el prompt:
   `no verificado` y se avisa.
 - Stock menor a 5 o agotado → alerta explícita, verificada tras la respuesta.
 
-### Resiliencia ante límite de tasa (Groq gratuito, 1000 OTPM)
+### Resiliencia ante límite de tasa (Groq gratuito: 8 000 TPM y 200 000 TPD por modelo)
 
 Solo los errores 429 se reintentan (4 intentos, espera 20s/40s/60s/80s) en
 `agent/agent.py` + `agent/llm_client.py`; otros errores caen directo al
 fallback sin duplicar llamadas. Configurable con `AGENT_RETRY_ATTEMPTS` y
 `AGENT_RETRY_BASE_S`. Para los evals, la pausa `--pausa` entre casos evita
 llegar al límite.
+
+El plan gratuito también tiene un **límite diario de tokens (TPD)**: cuando se
+agota, la cuota no se recupera esperando en la misma sesión (se reinicia a la
+medianoche del proveedor). Por eso el agente **detecta el límite diario por
+separado**, no reintenta en vano y responde *"se agotó la cuota diaria de
+tokens; la cuota se reinicia en 12m"* en vez de un mensaje genérico. En ese
+caso el agente cae igual a modo sin IA (búsqueda directa en el CSV).
 
 ## 🗺️ Diagramas
 
@@ -215,19 +261,34 @@ Orquestación, flujos feliz/negativa y memoria en [`docs/diagramas.md`](docs/dia
 | `EMBEDDING_MODEL` | Modelo de embeddings locales | `paraphrase-multilingual-MiniLM-L12-v2` |
 | `MEMORIA_FILE` / `MEMORIA_COLLECTION` | Ruta y colección de la memoria (los tests las aíslan) | `data/memory/memoria.jsonl` / `memoria` |
 | `AGENT_RETRY_ATTEMPTS` / `AGENT_RETRY_BASE_S` | Reintentos solo ante 429 y espera base (20s,40s,60s,80s) | `4` / `20` |
+| `EMAIL_MODE` | `auto` (smtp si hay credenciales, dry si no), `smtp` o `dry` | `auto` |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | Servidor y credenciales SMTP (Gmail/Outlook: contraseña de aplicación) | `smtp.gmail.com` / `587` / — / — |
+| `SMTP_TLS` / `SMTP_SSL` / `EMAIL_TIMEOUT_S` | STARTTLS, SSL directo (465) y timeout de espera | `1` / `0` / `15` |
+| `EMAIL_FROM` | Remitente con nombre visible | `Repuestos Sur <cotizaciones@repuestosur.cl>` |
+| `EMAIL_DOMAINS_ALLOWLIST` | Dominios permitidos para envío (vacío = todos) | — |
 
 ## 📊 Resultado de las pruebas
 
-Última corrida completa (`python tests/eval_agent.py`):
+Última corrida completa de la suite (`python tests/eval_agent.py`):
 
 | | |
 |---|---|
-| Casos aprobados | **15/15 (100 %)** — meta ≥ 85 % |
-| Cobertura | búsqueda, validación, negativas, alerta de stock, fuera de contexto, RAG, compatibilidad, guardrails, escritura y memoria entre sesiones |
-| Tokens | ~47 000 |
-| Fecha | 2026-10-19 |
+| Casos aprobados | **16/16 (100 %)** — meta ≥ 85 % |
+| Modelo | `openai/gpt-oss-120b` (Groq, 2.º respaldo de D8) |
+| Cobertura | búsqueda, validación, negativas, alerta de stock, fuera de contexto, RAG, compatibilidad, guardrails, escritura, memoria entre sesiones y envío por correo |
+| Tokens | ~67 000 (0 reintentos 429) |
+| Fecha | 2026-10-21 |
 
 Detalle por caso en [`tests/resultados/eval_reporte.md`](tests/resultados/eval_reporte.md).
+
+> Corridas anteriores: **15/15 (100 %)** el 2026-10-19 con
+> `qwen/qwen3.8-27b` (modelo principal de D8) sobre la suite de 15 casos, y
+> **14/16 (87,5 %)** con `openai/gpt-oss-120b` antes de arreglar el índice RAG y
+> el contrato de las tools. La corrida del 2026-10-19 está archivada en
+> [`eval_reporte_15casos_qwen_2026-10-19.md`](tests/resultados/eval_reporte_15casos_qwen_2026-10-19.md).
+> La corrida con `qwen/qwen3.8-27b` sobre los 16 casos se sigue haciendo **por
+> partes** (`--parcial`): su **cuota diaria de tokens (TPD)** se agotó y se
+> libera sola a ~140 tokens/min.
 
 ## ⚠️ Limitaciones
 
@@ -238,6 +299,11 @@ Detalle por caso en [`tests/resultados/eval_reporte.md`](tests/resultados/eval_r
   generados y están en `.gitignore`.
 - `uv.lock` corresponde al lock inicial del proyecto; con `pip` se usa
   `requirements.txt`.
+- **Si el agente responde "no tengo información suficiente" a una consulta que
+  sí está en los manuales**, el índice de ChromaDB puede estar corrupto (síntoma
+  típico: `Error creating hnsw segment reader: Nothing found on disk`). La
+  búsqueda **se auto-repara** (reindexa y reintenta), pero conviene reconstruirlo
+  a mano: `python ingestion/ingest.py --force`.
 
 ## 📚 Referencias
 

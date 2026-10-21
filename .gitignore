@@ -15,3 +15,6 @@ data/memory/*.jsonl
 
 # Evidencia de pruebas (se versiona)
 !tests/resultados/
+
+# Corrida por partes (intermedio, se regenera; solo el reporte final se versiona)
+tests/resultados/eval_parcial.jsonl

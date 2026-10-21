@@ -8,17 +8,26 @@ from __future__ import annotations
 
 import re
 
-from tools.inventory_lookup import find_by_code, stock_status
+from tools.inventory_lookup import find_by_code, normalizar_codigo, stock_status
 
-# Codigos tipo ALT-01, FLT-02, EMP-05...
-CODIGO_RE = re.compile(r"\b([A-Za-z]{2,4}-\d{2,3})\b")
+# Codigos tipo ALT-01, FLT-02, EMP-05... (se aceptan tambien los guiones
+# Unicode que a veces escribe el modelo: U+2010 a U+2015 y U+2212).
+GUIONES = "\u2010\u2011\u2012\u2013\u2014\u2015\u2212"
+CODIGO_RE = re.compile(r"\b([A-Za-z]{2,4}[\u2010-\u2015\u2212-]\d{2,3})\b")
+
+
+def normalizar_guiones(text: str) -> str:
+    """Deja los guiones ASCII para poder comparar el texto con el inventario."""
+    for dash in GUIONES:
+        text = text.replace(dash, "-")
+    return text
 
 
 def extract_codes(text: str) -> list[str]:
     """Codigos de repuesto mencionados en la respuesta del modelo."""
     seen = []
     for code in CODIGO_RE.findall(text or ""):
-        up = code.upper()
+        up = normalizar_codigo(code)
         if up not in seen:
             seen.append(up)
     return seen
@@ -34,6 +43,7 @@ def apply(text: str, inventory: list[dict]) -> tuple[str, list[str]]:
     if not text:
         return text, []
     violations: list[str] = []
+    text = normalizar_guiones(text)
     clean = text
 
     # 1) Ningun codigo puede ser inventado.

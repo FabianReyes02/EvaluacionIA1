@@ -5,10 +5,17 @@ Uso (desde la raiz del proyecto):
     python tests/eval_agent.py --solo C01,C07   # un subconjunto
     python tests/eval_agent.py --sin-reportar   # solo imprime
     python tests/eval_agent.py --pausa 20       # espera S segundos entre casos
+    python tests/eval_agent.py --parcial r.jsonl        # corrida por partes (reanuda)
+    python tests/eval_agent.py --ensamblar r.jsonl      # arma el reporte final
 
 La pausa entre casos existe para no agotar el cupo del plan gratuito de Groq
-(1000 tokens de salida/minuto): con `--pausa 0` se corre lo mas rapido posible
-(util solo con proveedor de pago o con cuota amplia).
+(8 000 tokens/min y 200 000 tokens/dia por modelo): con `--pausa 0` se corre lo
+mas rapido posible (util solo con proveedor de pago o con cuota amplia).
+
+Si el limite DIARIO de tokens no alcanza para la suite completa, la corrida por
+partes (`--parcial`) guarda el resultado de cada caso, saltea los ya hechos al
+reanudar y deja pendiente (no aprobado ni fallado) el caso que el proveedor
+corta por cuota; `--ensamblar` genera el reporte final con lo juntado.
 
 Salidas:
     tests/resultados/eval_reporte.json   detalle completo (insumo del informe)
@@ -21,6 +28,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -38,6 +46,7 @@ os.environ["MEMORIA_COLLECTION"] = "memoria_eval"
 
 from agent.agent import run  # noqa: E402
 from agent.guardrails import extract_codes  # noqa: E402
+from agent.llm_client import get_provider_config  # noqa: E402
 from agent.memory import LongTermMemory, reset_session  # noqa: E402
 from tools.inventory_lookup import ROOT, find_by_code, load_inventory  # noqa: E402
 
@@ -45,9 +54,16 @@ DATASET = Path(__file__).with_name("eval_dataset.json")
 RESULTADOS = Path(__file__).parent / "resultados"
 EXPORTS = ROOT / "data" / "exports"
 
+# Modelo con el que se corre la suite (queda en la evidencia para que el
+# reporte sea trazable: el limite diario de tokens de Groq es por modelo).
+_cfg = get_provider_config() or {}
+MODELO_EVAL = _cfg.get("model") or "(sin API key)"
+PROVEEDOR_EVAL = _cfg.get("provider") or "-"
+
 # Pausa por defecto entre casos (segundos): el plan gratuito de Groq limita a
-# 1000 tokens de salida/minuto y la suite completa lo agota; esperar entre casos
-# evita que un 429 tire un caso a modo sin IA. Configurable con --pausa.
+# 8 000 tokens de salida/minuto por modelo y la suite completa lo agota;
+# esperar entre casos evita que un 429 tire un caso a modo sin IA.
+# Configurable con --pausa.
 DEFAULT_PAUSA_S = 15.0
 
 
@@ -63,8 +79,20 @@ def limpiar_memoria_eval() -> None:
         pass  # si la coleccion no existe, no hay nada que borrar
 
 
+def _norm(texto: str) -> str:
+    """Normaliza texto para comparar: sin mayusculas, espacios ni signos.
+
+    Asi '90A', '90 A' o '**90A**' (markdown) cuentan como la misma coincidencia:
+    el criterio busca el dato, no el formato exacto de la redaccion del modelo.
+    """
+    return re.sub(r"[^0-9a-z\u00C0-\u024F]+", "", (texto or "").lower())
+
+
 def contains_any(text: str, opciones: list[str]) -> bool:
-    return any(o in text for o in opciones)
+    if any(o in text for o in opciones):
+        return True
+    norm = _norm(text)
+    return any(_norm(o) in norm for o in opciones)
 
 
 def evaluar(caso: dict, respuesta: str, resultado: dict, ctx: dict) -> tuple[bool, list[str]]:
@@ -85,7 +113,7 @@ def evaluar(caso: dict, respuesta: str, resultado: dict, ctx: dict) -> tuple[boo
             detalles.append(f"usó la herramienta prohibida '{tool}'")
 
     for frag in esp.get("debe_contener", []):
-        if frag not in respuesta:
+        if frag not in respuesta and _norm(frag) not in _norm(respuesta):
             detalles.append(f"la respuesta no contiene '{frag}'")
     if esp.get("debe_contener_any") and not contains_any(respuesta, esp["debe_contener_any"]):
         detalles.append(f"no contiene ninguno de {esp['debe_contener_any']}")
@@ -121,17 +149,98 @@ def evaluar(caso: dict, respuesta: str, resultado: dict, ctx: dict) -> tuple[boo
     return (not detalles), detalles
 
 
+def _cargar_parcial(path: Path) -> dict[str, dict]:
+    """Lee los resultados ya guardados de una corrida por partes."""
+    guardados: dict[str, dict] = {}
+    if not path.exists():
+        return guardados
+    for linea in path.read_text(encoding="utf-8").splitlines():
+        linea = linea.strip()
+        if not linea:
+            continue
+        try:
+            dato = json.loads(linea)
+        except json.JSONDecodeError:
+            continue
+        if dato.get("id"):
+            guardados[dato["id"]] = dato
+    return guardados
+
+
+def _escribir_reporte(resultados: list[dict], meta: int, fecha: str) -> dict:
+    """Escribe eval_reporte.json y eval_reporte.md con los resultados dados."""
+    RESULTADOS.mkdir(parents=True, exist_ok=True)
+    aprobados = sum(1 for r in resultados if r["aprobado"])
+    pct = round(100.0 * aprobados / len(resultados), 1) if resultados else 0.0
+    total_tokens = sum((r.get("tokens") or {}).get("total", 0) for r in resultados)
+    reporte = {
+        "fecha": fecha,
+        "proveedor": resultados[0].get("proveedor", "-") if resultados else "-",
+        "modelo": resultados[0].get("modelo", "-") if resultados else "-",
+        "meta": meta,
+        "aprobados": aprobados,
+        "total": len(resultados),
+        "porcentaje": pct,
+        "tokens": total_tokens,
+        "resultados": resultados,
+    }
+    (RESULTADOS / "eval_reporte.json").write_text(
+        json.dumps(reporte, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (RESULTADOS / "eval_reporte.md").write_text(_markdown(reporte), encoding="utf-8")
+    return reporte
+
+
+def _ensamblar(path: Path, dataset: dict) -> int:
+    """Genera el reporte final a partir del JSONL de una corrida por partes."""
+    guardados = _cargar_parcial(path)
+    if not guardados:
+        print(f"Sin resultados en {path}")
+        return 1
+    orden = [c["id"] for c in dataset["casos"]]
+    resultados = [guardados[i] for i in orden if i in guardados]
+    faltan = [i for i in orden if i not in guardados]
+    meta = dataset["meta"]["meta_aciertos"]
+    reporte = _escribir_reporte(
+        resultados,
+        meta,
+        guardados[resultados[0]["id"]].get("fecha", datetime.now().isoformat(timespec="seconds")),
+    )
+    print(f"Reporte ensamblado: {reporte['aprobados']}/{reporte['total']} ({reporte['porcentaje']}%)")
+    print(f"Tokens gastados: {reporte['tokens']}")
+    if faltan:
+        print(f"Faltan casos: {', '.join(faltan)}")
+    print(f"Reporte: {RESULTADOS / 'eval_reporte.md'}")
+    completa = not faltan and reporte["porcentaje"] >= meta
+    return 0 if completa else 1
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluacion del agente")
     parser.add_argument("--solo", default="", help="ids separados por coma (ej: C01,C07)")
     parser.add_argument("--sin-reportar", action="store_true", help="no escribe archivos")
+    parser.add_argument(
+        "--parcial",
+        default="",
+        help=(
+            "archivo JSONL donde se guarda el resultado de cada caso; si ya "
+            "existe, la corrida se reanuda y salta los casos ya hechos "
+            "(util cuando el cupo diario del proveedor no alcanza para la suite "
+            "completa de una sola vez)"
+        ),
+    )
+    parser.add_argument(
+        "--ensamblar",
+        default="",
+        help="genera el reporte final desde un JSONL de corrida por partes y sale",
+    )
     parser.add_argument(
         "--pausa",
         type=float,
         default=DEFAULT_PAUSA_S,
         help=(
             "segundos de espera entre casos para respetar el cupo del plan "
-            f"gratuito de Groq (1000 OTPM); 0 = sin pausa (default: {DEFAULT_PAUSA_S:.0f})"
+            f"gratuito de Groq (8000 TPM); 0 = sin pausa (default: {DEFAULT_PAUSA_S:.0f})"
         ),
     )
     args = parser.parse_args()
@@ -145,17 +254,32 @@ def main() -> int:
             print(f"Sin casos para {args.solo}")
             return 1
 
+    if args.ensamblar:
+        return _ensamblar(Path(args.ensamblar), dataset)
+
+    parcial_path = Path(args.parcial) if args.parcial else None
+    ya_hechos = _cargar_parcial(parcial_path) if parcial_path else {}
+    if ya_hechos:
+        print(f"Reanudando: {len(ya_hechos)} caso(s) ya hechos en {parcial_path}")
+
     inventory = load_inventory()
     total_tokens = 0
     resultados = []
 
-    limpiar_memoria_eval()
+    # La memoria de eval se limpia SOLO en una corrida desde cero: al reanudar
+    # hay que conservarla, porque C13 escribe el dato que C14 lee en otra sesión.
+    if not ya_hechos:
+        limpiar_memoria_eval()
     print(f"=== Evaluacion del agente ({len(casos)} casos) ===")
+    print(f"Proveedor: {PROVEEDOR_EVAL} | modelo: {MODELO_EVAL}")
     print(f"Memoria de eval aislada: {EVAL_MEMORY_FILE}")
     if args.pausa > 0:
-        print(f"Pausa entre casos: {args.pausa:.0f}s (cupo Groq 1000 OTPM)")
+        print(f"Pausa entre casos: {args.pausa:.0f}s (cupo Groq: 8000 TPM / 200000 TPD)")
     print()
     for indice, caso in enumerate(casos):
+        if caso["id"] in ya_hechos:
+            print(f"[SKIP] {caso['id']} ya estaba en {parcial_path}")
+            continue
         if indice > 0 and args.pausa > 0:
             print(f"        ... esperando {args.pausa:.0f}s antes del siguiente caso")
             time.sleep(args.pausa)
@@ -185,6 +309,17 @@ def main() -> int:
         ok, detalles = evaluar(caso, respuesta, resultado, ctx)
         tools = [s["tool"] for s in resultado["plan"] if s.get("tipo") == "tool_call"]
 
+        # Un caso que no llego al LLM por limite de tasa del proveedor no es un
+        # fallo del agente: es una limitacion de infraestructura. No se cuenta
+        # como aprobado ni como fallado, y la corrida se detiene para no gastar
+        # cuota en casos que tampoco van a poder ejecutarse.
+        bloqueado = resultado.get("rate_limited") and not resultado.get("used_llm")
+        if bloqueado:
+            motivo = "limite diario de tokens" if resultado.get("limite_diario") else "limite de tasa"
+            print(f"[CUPO] {caso['id']} no se pudo evaluar ({motivo} del proveedor).")
+            print("       Se deja pendiente: reintenta cuando se libere el cupo.")
+            break
+
         resultados.append(
             {
                 "id": caso["id"],
@@ -192,6 +327,9 @@ def main() -> int:
                 "descripcion": caso["descripcion"],
                 "entradas": caso["entradas"],
                 "session": session,
+                "proveedor": PROVEEDOR_EVAL,
+                "modelo": MODELO_EVAL,
+                "fecha": datetime.now().isoformat(timespec="seconds"),
                 "aprobado": ok,
                 "detalles": detalles,
                 "justificacion": caso["justificacion"],
@@ -201,10 +339,14 @@ def main() -> int:
                 "tokens": resultado.get("tokens"),
                 "reintentos": resultado.get("reintentos", 0),
                 "rate_limited": resultado.get("rate_limited", False),
+                "limite_diario": resultado.get("limite_diario", False),
                 "duracion_s": round(duracion, 1),
                 "respuesta": respuesta,
             }
         )
+        if parcial_path:
+            with parcial_path.open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(resultados[-1], ensure_ascii=False) + "\n")
         marca = "OK  " if ok else "FAIL"
         print(f"[{marca}] {caso['id']} ({caso['tipo']}) {caso['descripcion']}")
         if not ok:
@@ -212,27 +354,20 @@ def main() -> int:
                 print(f"        - {d}")
 
     aprobados = sum(1 for r in resultados if r["aprobado"])
-    pct = 100.0 * aprobados / len(resultados)
+    pct = 100.0 * aprobados / len(resultados) if resultados else 0.0
     meta = dataset["meta"]["meta_aciertos"]
     print(f"\nResultado: {aprobados}/{len(resultados)} ({pct:.1f}%) | meta: {meta}%")
     print(f"Tokens gastados: {total_tokens}")
 
+    if parcial_path:
+        # Corrida por partes: el reporte final se arma con --ensamblar.
+        print(f"Resultados parciales en: {parcial_path}")
+        print(f"Casos hechos en esta corrida: {len(resultados)}")
+        return 0
+
     if not args.sin_reportar:
-        RESULTADOS.mkdir(parents=True, exist_ok=True)
-        reporte = {
-            "fecha": datetime.now().isoformat(timespec="seconds"),
-            "meta": meta,
-            "aprobados": aprobados,
-            "total": len(resultados),
-            "porcentaje": round(pct, 1),
-            "tokens": total_tokens,
-            "resultados": resultados,
-        }
-        (RESULTADOS / "eval_reporte.json").write_text(
-            json.dumps(reporte, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
-        (RESULTADOS / "eval_reporte.md").write_text(
-            _markdown(reporte), encoding="utf-8"
+        reporte = _escribir_reporte(
+            resultados, meta, datetime.now().isoformat(timespec="seconds")
         )
         print(f"Reporte: {RESULTADOS / 'eval_reporte.md'}")
 
@@ -246,6 +381,8 @@ def _markdown(reporte: dict) -> str:
         f"**Fecha:** {reporte['fecha']}  ",
         f"**Resultado:** {reporte['aprobados']}/{reporte['total']} "
         f"({reporte['porcentaje']}%) — meta {reporte['meta']}%  ",
+        f"**Proveedor / modelo:** {reporte.get('proveedor', '-')} / "
+        f"{reporte.get('modelo', '-')}  ",
         f"**Tokens gastados:** {reporte['tokens']}",
         "",
         "| Caso | Tipo | Resultado | Herramientas | Guardrails | Tokens | Reintentos | Detalle |",

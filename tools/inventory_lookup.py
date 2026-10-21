@@ -30,6 +30,26 @@ def year_matches(compat: str, year: int) -> bool:
     return False
 
 
+def _haystack(item: dict) -> str:
+    """Texto donde se busca el tipo de repuesto (descripcion + categoria)."""
+    return f"{item['descripcion']} {item['categoria']}".lower()
+
+
+def coincide_tipo(item: dict, tipo: str) -> bool:
+    """True si la pieza cumple TODOS los tokens del tipo pedido.
+
+    ``search_parts`` filtra con coincidencia parcial (basta con que un token
+    coincida) para no perder resultados; esta funcion distingue el match
+    exacto del aproximado (ej: 'filtro de aceite' -> 'filtro de aire motor'
+    cumple solo 'filtro').
+    """
+    tokens = _tokens(tipo)
+    if not tokens:
+        return True
+    hay = _haystack(item)
+    return all(t in hay for t in tokens)
+
+
 def search_parts(
     inventory: list[dict],
     brand: str,
@@ -56,7 +76,7 @@ def search_parts(
         if not year_matches(compat, year_int):
             continue
         if tipo:
-            haystack = f"{item['descripcion']} {item['categoria']}".lower()
+            haystack = _haystack(item)
             if not any(p in haystack for p in _tokens(tipo)):
                 continue
         results.append(item)
@@ -68,11 +88,25 @@ def _tokens(text: str) -> list[str]:
     return [t for t in re.findall(r"[\wáéíóúñ]+", text.lower()) if len(t) >= 3]
 
 
+def normalizar_codigo(code: str) -> str:
+    """Normaliza un codigo de repuesto para poder compararlo con el CSV.
+
+    Los LLM escriben a veces el guion con variantes Unicode (U+2010 a U+2015,
+    U+2212) en vez del guion ASCII, o meten espacios ("ALT - 01"). Sin esta
+    normalizacion el codigo no existiria en el inventario y la cotizacion
+    saldria vacia.
+    """
+    texto = (code or "").strip().upper()
+    for dash in "\u2010\u2011\u2012\u2013\u2014\u2015\u2212":
+        texto = texto.replace(dash, "-")
+    return re.sub(r"\s*-\s*", "-", texto).strip()
+
+
 def find_by_code(inventory: list[dict], code: str) -> dict | None:
-    """Devuelve la fila con ese codigo (ignora mayusculas) o None."""
-    code = (code or "").strip().upper()
+    """Devuelve la fila con ese codigo (ignora mayusculas y guiones) o None."""
+    code = normalizar_codigo(code)
     for item in inventory:
-        if item["codigo"].strip().upper() == code:
+        if normalizar_codigo(item["codigo"]) == code:
             return item
     return None
 

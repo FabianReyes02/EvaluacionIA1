@@ -277,6 +277,147 @@ EvaluacionIA1/
   reintentos** (la pausa evitó el límite por completo). Evidencia regenerada en
   `tests/resultados/eval_reporte.{md,json}` (fecha 2026-10-19).
 
+## Actualización 2026-10-21 — Envío de cotizaciones por correo (D13)
+
+### Qué se agregó
+- **Tool `enviar_cotizacion_email`** (`agent/tools.py`): el agente la llama cuando
+  el cliente pide enviar la cotización por correo. Arma el cuerpo con los
+  **precios y el stock del CSV** (fuente única), valida la dirección, adjunta el
+  JSON de la cotización y devuelve el veredicto real (enviada / preparada /
+  falló). El agente pide la dirección si el cliente no se la dio.
+- **Módulo `tools/email_sender.py`**: transporte por **SMTP de la stdlib**
+  (`smtplib`, sin dependencias nuevas), con cuerpo en texto plano y HTML,
+  allowlist opcional de dominios (`EMAIL_DOMAINS_ALLOWLIST`) y registro de cada
+  envío en `data/exports/envios.jsonl`.
+- **Dry-run por defecto** (`EMAIL_MODE=auto|smtp|dry`): sin `SMTP_USER`/
+  `SMTP_PASSWORD` el correo queda como `.eml` en `data/exports/` y **no sale a
+  internet**. La tool nunca dice "enviada" si no lo envió.
+- **Regla 10 del `SYSTEM_PROMPT`**: el veredicto de la tool se reporta
+  literalmente al cliente, igual que se hacía con el guardado en memoria.
+- `health()` expone `correo_modo` y `correo_configurado`; la interfaz web lo
+  muestra en la barra de estado. Diagrama del flujo en `docs/diagramas.md` (§5).
+
+### Verificación
+- Dry-run: deja `data/exports/cotizacion_*.eml` con el detalle, el total y la
+  alerta de stock (verificado con ALT-02, stock 4 → "STOCK BAJO" en el correo).
+- Casos borde verificados: correo inválido o vacío (pide la dirección), código
+  inexistente (no envía nada), dominio fuera de la allowlist (no envía).
+- Caso de eval nuevo **C16** (la suite queda con 16 casos; falta re-correrla
+  con credenciales de Groq para regenerar la evidencia).
+
+### Hallazgo: el límite real de Groq era DIARIO (TPD), no por minuto
+- Al correr los evals, **todos** los casos caían a modo sin IA con
+  `OpenAIRateLimitError`. El mensaje real del proveedor era
+  *"Rate limit reached ... on tokens per day (TPD): Limit 200000, Used 198755"*
+  → el límite **diario** de tokens por modelo (200 000/día), no el de
+  1 000 tokens/min (OTPM) documentado en D12.
+- El backoff 20/40/60/80 s no puede recuperar una cuota diaria: eran 200 s
+  perdidos por caso sin ninguna posibilidad de éxito.
+- **Fix** (`agent/llm_client.py`): `is_daily_limit_error()` distingue TPD/RPD
+  del límite por minuto y `daily_limit_reset_hint()` extrae el "try again in
+  12m40s" del proveedor. En `agent/agent.py` el límite diario **no se
+  reintenta** y el mensaje al cliente es exacto ("se agotó la cuota diaria de
+  tokens; la cuota se reinicia en 12m") en vez de uno genérico que hablaba de
+  "por minuto". La traza ahora registra `limite_diario`.
+- **Límites reales verificados** contra la doc de Groq y las cabeceras
+  `x-ratelimit-*`: **8 000 tokens/min (TPM)** y **200 000 tokens/día (TPD) por
+  modelo**, no "1 000 OTPM" como decía D12. Además el TPD es **por modelo**:
+  agotar el de `qwen/qwen3.8-27b` no afecta a `openai/gpt-oss-120b`.
+- **Suite reanudable** (`tests/eval_agent.py`): `--parcial <jsonl>` guarda el
+  resultado de cada caso y saltea los ya hechos al reintentar; `--ensamblar
+  <jsonl>` arma el reporte final. Un caso que no llega al LLM por límite de
+  cuota queda **pendiente** (no aprobado ni fallado) y la corrida se detiene.
+
+### Cuatro defectos reales del agente encontrados al re-correr los evals
+1. **Pedía el vehículo aunque el cliente ya dio el código** ("cotiza el
+   ALT-01" → "¿de qué auto es?"). Regla 5 reescrita: *"para cotizar basta el
+   código del repuesto"* (el vehículo es opcional en la cotización).
+2. **Pedía el correo cuando el cliente solo pedía cotizar** (C12 pasó a
+   fallar al reescribir la regla 10). Ahora la regla 10 separa "cotizar"
+   (`exportar_cotizacion`) de "enviar por correo" (`enviar_cotizacion_email`).
+3. **Respondía "no tengo información suficiente" sin llamar a la herramienta**
+   (C02 y C09 con los modelos `gpt-oss`). Regla 2 y regla 11 nuevas: si no
+   sabes si un repuesto o un dato técnico existe, que lo decida la herramienta.
+   Con esto `openai/gpt-oss-120b` sube de **13/16 a 14/16 (87,5 %)**.
+4. **El modelo escribía los códigos con guion Unicode** (U+2011) y el CSV no
+   los encontraba → la cotización salía vacía. `normalizar_codigo()` en
+   `tools/inventory_lookup.py` + normalización de guiones en
+   `agent/guardrails.py`.
+
+### Estado de los evals (2026-10-21)
+- `qwen/qwen3.8-27b` (modelo de D8): **cuota diaria agotada** (198 755/200 000
+  tokens). La suite se está re-corriendo **por partes** con `--parcial`.
+- `openai/gpt-oss-120b`: **14/16 (87,5 %)** con los arreglos de prompt, y
+  **16/16 (100 %)** después de arreglar el índice RAG y el contrato de las
+  tools (tercera tanda, más abajo). Es el modelo que hoy **sí** emite
+  tool_calls (el 2026-10-06 no lo hacía; D8 se actualizó).
+- `openai/gpt-oss-20b`: 13/16 (81,2 %) con el prompt anterior; sube con los
+  arreglos de arriba.
+- La evidencia versionada en `tests/resultados/` es la de **16/16 (2026-10-21)**;
+  la corrida histórica de **15/15 (2026-10-19, qwen)** queda archivada aparte
+  (`eval_reporte_15casos_qwen_2026-10-19.{md,json}`).
+
+## Actualización 2026-10-21 (tercera tanda) — RAG roto, contrato de las tools y evidencia 16/16
+
+### ⚠️ Hallazgo grave: el índice de ChromaDB estaba corrupto y el RAG no funcionaba
+- Al re-correr los evals, **C09 (consulta al manual PDF) fallaba con todos los
+  modelos**, y el motivo no era el modelo: la tool `buscar_en_manual` devolvía
+  *"InternalError: Error creating hnsw segment reader: Nothing found on disk"* y
+  `list_collections()` listaba una colección cuyo `count()` reventaba con
+  *"Collection [1ad5f70a-…] does not exist"*.
+- Causa: en `chroma_db/` quedaron **directorios de segmentos huérfanos** y filas
+  obsoletas en `chroma.sqlite3` (ciclos de borrado + recreación de colecciones
+  con `ingest.py --force` y `delete_collection`). La consulta semántica apuntaba
+  a un directorio de segmentos que ya no existía → **el agente se quedaba sin
+  RAG y respondía "no tengo información suficiente"** (fallo silencioso: el
+  chat seguía "funcionando").
+- **Fix**:
+  1. Reconstrucción limpia del índice (`chroma_db/` → `ingestion/ingest.py
+     --force`) y verificación: `buscar_en_manual("amperaje del alternador de
+     90A")` vuelve a traer el fragmento de `manual_alternador.pdf` pág. 1.
+  2. **Auto-reparación en `agent/rag.py`**: si la consulta falla por segmentos
+     corruptos, `search()` reindexa la colección desde el origen (PDF/CSV) y
+     reintenta una vez. Además `_borrar_coleccion()` ya no revienta si la
+     colección no existe.
+  3. `README.md` y `docs/CHECKLIST_ENTREGA.md` documentan el síntoma y el
+     remedio (`python ingestion/ingest.py --force`).
+
+### El contrato de la tool `buscar_repuesto` era ambiguo (C02)
+- El filtro por tipo de repuesto hace coincidencia **parcial** (basta un token):
+  "filtro de aceite" emparejaba con **FLT-02 (filtro de aire motor)**. La tool
+  respondía *"1 repuesto(s) para Hyundai Accent 2016"* sin aclarar que **no
+  era** el tipo pedido, así que el modelo respondía *"no tengo información
+  suficiente"* y **nunca citaba el código FLT-02** → C02 fallaba.
+- **Fix**: `coincide_tipo()` (`tools/inventory_lookup.py`) distingue match
+  exacto de aproximado, y la tool ahora lo dice explícitamente: *"No hay
+  'filtro de aceite' exacto para Hyundai Accent 2016. La coincidencia más
+  cercana en el inventario es: - [FLT-02] Filtro de aire motor … Cita el código
+  (FLT-02) como alternativa"*. El modelo ahora cita el código y aclara.
+
+### El evaluador comparaba texto sin normalizar (C09)
+- La respuesta correcta era *"corriente nominal de **90 A**"* (con espacio y
+  markdown) y el criterio pedía el literal `90A` → falso negativo.
+- **Fix**: `_norm()` en `tests/eval_agent.py` compara sin mayúsculas, espacios
+  ni signos, de modo que `90A`, `90 A` y `**90A**` son la misma coincidencia.
+  El criterio sigue exigiendo el dato, no el formato de redacción.
+
+### Bug del modo reanudable: la memoria se borraba al reanudar
+- `limpiar_memoria_eval()` se ejecutaba **siempre** al empezar una corrida, y en
+  modo por partes eso borraba lo que C13 había escrito: C14 (que lee en una
+  **sesión nueva** lo que C13 guardó) fallaba al reanudar.
+- **Fix**: la memoria de eval se limpia **solo** en una corrida desde cero
+  (`if not ya_hechos`). Verificado: C13 en una corrida y C14 en otra → 1/1 y
+  1/1.
+
+### Evidencia: **16/16 (100 %)** con la suite completa
+- `openai/gpt-oss-120b` (2.º respaldo de D8): **16/16 (100 %)**, ~67 000
+  tokens, 0 reintentos 429 → `tests/resultados/eval_reporte.{md,json}`.
+- La corrida previa de qwen (15/15 del 2026-10-19, suite de 15 casos) queda
+  archivada como `tests/resultados/eval_reporte_15casos_qwen_2026-10-19.{md,json}`.
+- La corrida con el modelo principal (`qwen/qwen3.8-27b`) sigue **por partes**:
+  su cuota diaria se libera sola a ~140 tokens/min, así que la suite completa
+  tarda varias horas en ejecutarse.
+
 ## Cómo ejecutar el proyecto (resumen)
 
 ```bash
@@ -286,6 +427,7 @@ pip install -r requirements.txt
 
 # 2. Credenciales
 copy .env.example .env        # pegar GROQ_API_KEY (gsk_...)
+                              # envío de correo (opcional): SMTP_USER/SMTP_PASSWORD + EMAIL_MODE="smtp"
 
 # 3. Ingesta RAG (una vez; --force reconstruye, --stats muestra estado)
 python ingestion/ingest.py

@@ -23,8 +23,10 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from agent.guardrails import apply as apply_guardrails
 from agent.llm_client import (
     RATE_LIMIT_RETRIES,
+    daily_limit_reset_hint,
     get_chat_model,
     get_provider_config,
+    is_daily_limit_error,
     is_rate_limit_error,
     retry_delay_s,
     usage_from,
@@ -33,6 +35,7 @@ from agent.memory import LongTermMemory, get_session
 from agent.prompts import SYSTEM_PROMPT, build_context_block
 from agent.tools import ALL_TOOLS, get_inventory
 from agent.trace import log_trace, steps_from_messages
+from tools.email_sender import get_email_config
 from tools.inventory_lookup import (
     diagnose_missing,
     find_by_code,
@@ -99,6 +102,12 @@ def _invoke_with_retry(agent, payload: dict) -> tuple[dict, int, bool]:
         try:
             return agent.invoke(payload), intento, False
         except Exception as exc:
+            if is_daily_limit_error(exc):
+                # La cuota diaria no se recupera esperando 20/40/60/80 s: el
+                # reinicio es a la medianoche. Se propaga para avisar bien.
+                print(f"(aviso) Limite diario de tokens del proveedor "
+                      f"({exc.__class__.__name__}): no se reintenta.")
+                raise
             if is_rate_limit_error(exc) and intento < intentos:
                 espera = retry_delay_s(intento)
                 print(f"(aviso) Limite de tasa en el agente ({exc.__class__.__name__}): "
@@ -115,6 +124,17 @@ def _rate_limit_message() -> str:
         "El servicio de IA esta saturado por limite de tasa (plan gratuito Groq, "
         "1000 tokens de salida/minuto). Reintente en un minuto; "
         "mientras tanto puedo buscar directo en el inventario. "
+    )
+
+
+def _daily_limit_message(exc: Exception) -> str:
+    """Mensaje amable cuando se agota la cuota DIARIA de tokens (TPD)."""
+    espera = daily_limit_reset_hint(exc)
+    cuando = f" La cuota se reinicia en {espera}." if espera else ""
+    return (
+        "Se agoto la cuota diaria de tokens del proveedor (limite diario, no "
+        f"por minuto).{cuando} Reintenta mas tarde; mientras tanto puedo "
+        "buscar directo en el inventario. "
     )
 
 
@@ -176,6 +196,7 @@ def run(agent_input: str, session_id: str = "default") -> dict:
     steps: list[dict] = []
     tokens = None
     used_llm = False
+    limite_diario = False
 
     if agent is None:
         answer = _fallback(agent_input)
@@ -204,7 +225,11 @@ def run(agent_input: str, session_id: str = "default") -> dict:
             answer = content or "(el modelo no devolvio texto)"
         except Exception as exc:
             print(f"(aviso) Fallo el agente: {exc.__class__.__name__}: {exc}")
-            if is_rate_limit_error(exc):
+            if is_daily_limit_error(exc):
+                rate_limited = True
+                limite_diario = True
+                answer = _daily_limit_message(exc) + _fallback(agent_input)
+            elif is_rate_limit_error(exc):
                 rate_limited = True
                 reintentos = RATE_LIMIT_RETRIES
                 answer = _rate_limit_message() + _fallback(agent_input)
@@ -234,6 +259,7 @@ def run(agent_input: str, session_id: str = "default") -> dict:
             "modelo": (get_provider_config() or {}).get("model"),
             "reintentos": reintentos,
             "rate_limited": rate_limited,
+            "limite_diario": limite_diario,
         },
     )
 
@@ -247,6 +273,7 @@ def run(agent_input: str, session_id: str = "default") -> dict:
         "session_id": session_id,
         "reintentos": reintentos,
         "rate_limited": rate_limited,
+        "limite_diario": limite_diario,
     }
 
 
@@ -254,6 +281,7 @@ def health() -> dict:
     """Estado del LLM y de los datos para la interfaz (/api/health)."""
     cfg = get_provider_config()
     inventory = get_inventory()
+    email_cfg = get_email_config()
     return {
         "llm_disponible": cfg is not None,
         "proveedor": cfg["provider"] if cfg else None,
@@ -261,4 +289,6 @@ def health() -> dict:
         "repuestos": len(inventory),
         "memoria_largo_plazo": len(LongTermMemory.all()),
         "herramientas": [t.name for t in ALL_TOOLS],
+        "correo_modo": email_cfg["modo"],
+        "correo_configurado": email_cfg["modo"] == "smtp",
     }

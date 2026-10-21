@@ -7,6 +7,7 @@ puntual (`ask_llm`) para los usos que no necesitan el loop del agente.
 from __future__ import annotations
 
 import os
+import re
 
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
@@ -105,6 +106,10 @@ def ask_llm(prompt: str, model: ChatOpenAI | None = None) -> tuple[str | None, d
         try:
             message = llm.invoke(prompt)
         except Exception as exc:
+            if is_daily_limit_error(exc):
+                # Cuota diaria agotada: reintentar en esta sesion no sirve.
+                print(f"(aviso) Limite diario de tokens del proveedor: {exc.__class__.__name__}")
+                return None, None
             if is_rate_limit_error(exc) and intento < intentos:
                 _sleep_retry(intento, exc)
                 continue
@@ -135,6 +140,54 @@ def is_rate_limit_error(exc: BaseException) -> bool:
     texto = f"{exc.__class__.__name__}: {exc}".lower()
     return ("429" in texto or "rate_limit" in texto or "rate limit" in texto
             or "too many requests" in texto or "otpm" in texto or "tpm" in texto)
+
+
+def is_daily_limit_error(exc: BaseException) -> bool:
+    """True si el error es el limite DIARIO de tokens (TPD/RPD) del proveedor.
+
+    Es distinto del limite por minuto (OTPM): contra el limite diario esperar
+    20/40/60/80 s dentro de la misma sesion no sirve de nada, porque la cuota
+    se reinicia a la medianoche (o en ~24 h segun el proveedor), no en un
+    minuto. Detectarlo evita gastar 200 s por caso en reintentos inútiles.
+    """
+    texto = f"{exc.__class__.__name__}: {exc}".lower()
+    return (
+        "tokens per day" in texto
+        or "per day (tpd)" in texto
+        or "requests per day" in texto
+        or "per day (rpd)" in texto
+        or "(tpd)" in texto
+        or "(rpd)" in texto
+    )
+
+
+def daily_limit_reset_hint(exc: BaseException) -> str:
+    """Tiempo que falta para reintentar, segun lo indica el proveedor.
+
+    Parsea el "Please try again in 12m40.32s" de Groq. Devuelve "" si el
+    mensaje no lo dice.
+    """
+    m = re.search(r"try again in\s+([0-9hms\.]+)", str(exc), re.IGNORECASE)
+    if not m:
+        return ""
+    segundos = 0.0
+    for valor, unidad in re.findall(r"(\d+(?:\.\d+)?)\s*([hms])", m.group(1), re.IGNORECASE):
+        n = float(valor)
+        if unidad.lower() == "h":
+            segundos += n * 3600
+        elif unidad.lower() == "m":
+            segundos += n * 60
+        else:
+            segundos += n
+    if segundos <= 0:
+        return ""
+    horas, resto = divmod(int(segundos), 3600)
+    minutos = resto // 60
+    if horas:
+        return f"{horas}h {minutos}m"
+    if minutos:
+        return f"{minutos}m"
+    return f"{resto}s"
 
 
 def retry_delay_s(intento: int) -> float:
