@@ -22,6 +22,18 @@
   .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
   .card h2{margin:0 0 10px;font-size:14px;text-transform:uppercase;
            letter-spacing:.4px;color:var(--muted)}
+  /* Pestañas: el inventario vive en su propia pestaña, no debajo del chat */
+  .tabs{display:inline-flex;gap:6px;background:var(--card);border:1px solid var(--line);
+        border-radius:10px;padding:6px;width:fit-content;max-width:100%}
+  .tab{background:transparent;color:var(--muted);border:0;border-radius:8px;
+       padding:8px 16px;font-weight:600}
+  .tab:hover{background:#eef2f7;color:var(--ink)}
+  .tab.activa{background:#e8f0ff;color:var(--brand)}
+  .tab .badge{display:inline-block;margin-left:6px;padding:0 7px;border-radius:99px;
+              background:#eef2f7;color:var(--muted);font-size:11px;font-weight:700}
+  .tab.activa .badge{background:#fff;color:var(--brand)}
+  .panel{display:none;gap:14px}
+  .panel.activa{display:grid}
   form.quick{display:grid;grid-template-columns:1fr 1fr 100px auto;gap:8px}
   @media(max-width:640px){form.quick{grid-template-columns:1fr}}
   input,button{font:inherit;padding:9px 10px;border-radius:8px;border:1px solid var(--line)}
@@ -60,38 +72,48 @@
 </header>
 
 <main>
-  <section class="card">
-    <h2>Búsqueda rápida</h2>
-    <form class="quick" id="quickForm">
-      <input id="marca" placeholder="Marca (Suzuki)" autocomplete="off">
-      <input id="modelo" placeholder="Modelo (Swift)" autocomplete="off">
-      <input id="anio" placeholder="Año (2015)" inputmode="numeric" autocomplete="off">
-      <button type="submit">Buscar repuestos</button>
-    </form>
-    <p class="hint">También puedes escribirle libre al asistente: «necesito un alternador para un Accent 2016»,
-      «¿qué especificaciones tiene el ALT-01?» o «guarda que mi auto es un Swift 2015».</p>
+  <nav class="tabs" role="tablist">
+    <button type="button" class="tab activa" role="tab" data-tab="chat">💬 Chat</button>
+    <button type="button" class="tab" role="tab" data-tab="inv">📦 Inventario
+      <span class="badge" id="count"></span></button>
+  </nav>
+
+  <section class="panel activa" id="panel-chat">
+    <section class="card">
+      <h2>Búsqueda rápida</h2>
+      <form class="quick" id="quickForm">
+        <input id="marca" placeholder="Marca (Suzuki)" autocomplete="off">
+        <input id="modelo" placeholder="Modelo (Swift)" autocomplete="off">
+        <input id="anio" placeholder="Año (2015)" inputmode="numeric" autocomplete="off">
+        <button type="submit">Buscar repuestos</button>
+      </form>
+      <p class="hint">También puedes escribirle libre al asistente: «necesito un alternador para un Accent 2016»,
+        «¿qué especificaciones tiene el ALT-01?» o «guarda que mi auto es un Swift 2015».</p>
+    </section>
+
+    <section class="card">
+      <h2>Chat con el agente</h2>
+      <div id="messages"></div>
+      <form class="chat" id="chatForm">
+        <input id="input" placeholder="Escribe tu consulta…" autocomplete="off">
+        <button type="submit" id="send">Enviar</button>
+      </form>
+    </section>
   </section>
 
-  <section class="card">
-    <h2>Chat con el agente</h2>
-    <div id="messages"></div>
-    <form class="chat" id="chatForm">
-      <input id="input" placeholder="Escribe tu consulta…" autocomplete="off">
-      <button type="submit" id="send">Enviar</button>
-    </form>
-  </section>
-
-  <section class="card">
-    <h2>Inventario <span id="count"></span></h2>
-    <div style="overflow-x:auto">
-      <table>
-        <thead>
-          <tr><th>Código</th><th>Descripción</th><th>Marca</th>
-              <th>Categoría</th><th>Vehículos compatibles</th><th>Precio</th><th>Stock</th></tr>
-        </thead>
-        <tbody id="parts"></tbody>
-      </table>
-    </div>
+  <section class="panel" id="panel-inv">
+    <section class="card">
+      <h2>Inventario</h2>
+      <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr><th>Código</th><th>Descripción</th><th>Marca</th>
+                <th>Categoría</th><th>Vehículos compatibles</th><th>Precio</th><th>Stock</th></tr>
+          </thead>
+          <tbody id="parts"></tbody>
+        </table>
+      </div>
+    </section>
   </section>
 </main>
 
@@ -151,6 +173,16 @@ async function send(text) {
 
 $("chatForm").addEventListener("submit", e => { e.preventDefault(); send($("input").value); });
 
+// Pestañas: el chat y el inventario son paneles independientes.
+document.querySelectorAll(".tab").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach(b => b.classList.toggle("activa", b === btn));
+    document.querySelectorAll(".panel").forEach(p =>
+      p.classList.toggle("activa", p.id === "panel-" + btn.dataset.tab));
+    if (btn.dataset.tab === "chat") $("input").focus();
+  });
+});
+
 $("quickForm").addEventListener("submit", e => {
   e.preventDefault();
   const m = $("marca").value.trim(), mo = $("modelo").value.trim(), a = $("anio").value.trim();
@@ -176,7 +208,7 @@ async function loadHealth() {
 async function loadParts() {
   try {
     const d = await api("/api/inventory");
-    $("count").textContent = "(" + d.parts.length + ")";
+    $("count").textContent = d.parts.length;
     $("parts").innerHTML = d.parts.map(p => {
       const s = Number(p.stock);
       const cls = s <= 0 ? "bad" : (s < 5 ? "warn" : "ok");
@@ -186,7 +218,7 @@ async function loadParts() {
         <td>${esc(p.vehiculos_compatibles)}</td>
         <td>$${esc(p.precio)}</td><td><span class="pill ${cls}">${txt}</span></td></tr>`;
     }).join("");
-  } catch (e) { $("count").textContent = "(sin datos)"; }
+  } catch (e) { $("count").textContent = "?"; }
 }
 
 loadHealth();

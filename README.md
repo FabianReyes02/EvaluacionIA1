@@ -92,7 +92,10 @@ python web/server.py 8080        # otro puerto
 ```
 
 Incluye búsqueda rápida por marca/modelo/año, chat libre con historial y la
-tabla del inventario con alertas de stock.
+tabla del inventario con alertas de stock. La interfaz tiene **dos pestañas**:
+**💬 Chat** (búsqueda rápida + conversación con el agente) y **📦 Inventario**
+(tabla de repuestos con el contador de stock), de modo que el catálogo no
+queda apilado debajo del chat.
 
 ### 2. Línea de comandos
 

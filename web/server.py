@@ -3,7 +3,7 @@
 Expone la interfaz de `static/index.html` y una API JSON minima que conversa
 con el agente:
 
-    GET  /               -> interfaz (chat + catalogo)
+    GET  /               -> interfaz (pestañas: chat + inventario)
     GET  /api/health     -> estado del LLM, tools, memoria e indice
     GET  /api/inventory  -> filas del inventario (para la tabla de repuestos)
     POST /api/chat       -> {"message": "...", "session": "..."} -> respuesta del agente
