@@ -94,7 +94,7 @@ SMTP aceptó el mensaje).
 
 | Archivo | Contenido |
 |---|---|
-| `tests/resultados/eval_reporte.md` / `.json` | **16/16 (100 %)** — suite completa (incluye C16, envío por correo), modelo `openai/gpt-oss-120b`, 2026-10-21 |
+| `tests/resultados/eval_reporte.md` / `.json` | **16/16 (100 %)** — suite completa (incluye C16, envío por correo), modelo `openai/gpt-oss-120b`, 2026-10-21, 66 712 tokens, 0 reintentos. **C16 aprobado con envío SMTP real** (modo `smtp` contra el sandbox de Mailtrap) |
 | `tests/resultados/eval_reporte_15casos_qwen_2026-10-19.md` / `.json` | **15/15 (100 %)** — corrida histórica con `qwen/qwen3.8-27b` (suite de 15 casos), 2026-10-19 |
 
 ## 3.b Pendientes conocidos (no bloquean, documentar en informe)
@@ -102,5 +102,10 @@ SMTP aceptó el mensaje).
 - `uv.lock` desactualizado (proyecto corre con `pip` + `requirements.txt`, D11).
 - Memoria largo plazo recorta por llegada, no resuelve contradicciones.
 - Datos simulados (`generate_sample_data.py`), no tienda real.
-- El envío de correo está verificado en modo **dry-run**; el envío real por SMTP
-  queda pendiente de configurar credenciales en la máquina del evaluador.
+- El envío de correo está verificado **en los dos modos**: `dry-run` (por
+  defecto, deja el `.eml` en `data/exports/`) y **SMTP real** (envío aceptado
+  por el servidor, con `modo: "smtp"` y `enviado: true` en
+  `data/exports/envios.jsonl`). La corrida de evidencia del 2026-10-21 se hizo
+  en modo `smtp` (destino: sandbox de Mailtrap, que retiene los mensajes y no
+  los entrega a nadie). Para enviar a un buzón real basta con poner
+  `SMTP_USER`/`SMTP_PASSWORD` (Gmail/Outlook: contraseña de aplicación).

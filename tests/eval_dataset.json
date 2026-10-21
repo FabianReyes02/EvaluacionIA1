@@ -188,7 +188,7 @@
         "genera_archivo": true,
         "no_codigos_inventados": true
       },
-      "justificacion": "Tool de ENVIO: arma el correo con los precios del CSV y deja la cotización en data/exports/ (modo dry-run por defecto: no sale a internet)."
+      "justificacion": "Tool de ENVIO: arma el correo con los precios del CSV y deja la cotización en data/exports/ (modo dry-run por defecto: no sale a internet; con SMTP configurado el envío es real y queda registrado en envios.jsonl)."
     }
   ]
 }

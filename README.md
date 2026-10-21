@@ -300,7 +300,8 @@ Orquestación, flujos feliz/negativa y memoria en [`docs/diagramas.md`](docs/dia
 | Casos aprobados | **16/16 (100 %)** — meta ≥ 85 % |
 | Modelo | `openai/gpt-oss-120b` (Groq, 2.º respaldo de D8) |
 | Cobertura | búsqueda, validación, negativas, alerta de stock, fuera de contexto, RAG, compatibilidad, guardrails, escritura, memoria entre sesiones y envío por correo |
-| Tokens | ~67 000 (0 reintentos 429) |
+| Tokens | 66 712 (0 reintentos 429) |
+| Modo de correo | **smtp** — el caso C16 envió el correo de verdad (sandbox de Mailtrap: queda atrapado en el panel, no llega a nadie) |
 | Fecha | 2026-10-21 |
 
 Detalle por caso en [`tests/resultados/eval_reporte.md`](tests/resultados/eval_reporte.md).
@@ -310,9 +311,12 @@ Detalle por caso en [`tests/resultados/eval_reporte.md`](tests/resultados/eval_r
 > **14/16 (87,5 %)** con `openai/gpt-oss-120b` antes de arreglar el índice RAG y
 > el contrato de las tools. La corrida del 2026-10-19 está archivada en
 > [`eval_reporte_15casos_qwen_2026-10-19.md`](tests/resultados/eval_reporte_15casos_qwen_2026-10-19.md).
-> La corrida con `qwen/qwen3.8-27b` sobre los 16 casos se sigue haciendo **por
-> partes** (`--parcial`): su **cuota diaria de tokens (TPD)** se agotó y se
-> libera sola a ~140 tokens/min.
+> La corrida con `qwen/qwen3.8-27b` sobre los 16 casos no se ha podido
+> completar: su **cuota diaria de tokens (TPD)** es una ventana **móvil de 24 h**
+> por modelo (200 000 tokens) y al agotarse solo se liberan unos ~30 tokens/min
+> (los tokens van saliendo de la ventana conforme envejecen las peticiones).
+> Cada modelo tiene su propio cubo, así que con el 120b la suite sí corre
+> completo.
 
 ## ⚠️ Limitaciones
 

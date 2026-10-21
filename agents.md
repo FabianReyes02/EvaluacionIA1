@@ -314,10 +314,15 @@ EvaluacionIA1/
   con retry 429 y pausa `--pausa` entre casos; 0 reintentos. Evidencia
   regenerada en `tests/resultados/`.
 - **Evals de la suite de 16 casos (2026-10-21):** **16/16 (100 %)** con
-  `openai/gpt-oss-120b` (~67 000 tokens, 0 reintentos). Evidencia en
+  `openai/gpt-oss-120b` (66 712 tokens, 0 reintentos). Evidencia en
   `tests/resultados/eval_reporte.{md,json}`; la corrida histórica de 15/15
   (qwen, 2026-10-19) archivada en
-  `tests/resultados/eval_reporte_15casos_qwen_2026-10-19.{md,json}`.
+  `tests/resultados/eval_reporte_15casos_qwen_2026-10-19.{md,json}`. Esta
+  corrida se hizo en **modo `smtp`**: el caso **C16 aprobada con el envío
+  real** (el agente respondió *"Cotización enviada a juan.perez@ejemplo.com"*).
+  La corrida con `qwen/qwen3.8-27b` (modelo principal de D8) **no se pudo
+  completar**: su TPD es una ventana móvil de 24 h que se agotó y solo libera
+  ~30 tokens/min.
 - **RAG reparado (2026-10-21, D14):** el índice de ChromaDB tenía segmentos
   huérfanos y el RAG **fallaba en silencio** (C09 perdía con todos los
   modelos). Índice reconstruido + auto-reparación en `agent/rag.py`

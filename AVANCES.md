@@ -484,6 +484,17 @@ bloqueo de red que impida el envío.
 - `--sin-reportar` deja intacta la evidencia principal (16/16) mientras se
   re-corre la suite completa por partes.
 
+### Evidencia regenerada: 16/16 con envío real
+- Suite completa por partes con `openai/gpt-oss-120b` (el modelo con cuota
+  libre ese día): **16/16 (100 %)**, 66 712 tokens, 0 reintentos.
+- Armando el reporte con `--ensamblar` desde el JSONL parcial,
+  `tests/resultados/eval_reporte.{md,json}` queda con la corrida nueva: la
+  respuesta de **C16** es *"Cotización enviada a **juan.perez@ejemplo.com**"*,
+  o sea el caso de eval aprobó con el **envío real** (sandbox de Mailtrap), no
+  en dry-run.
+- Respaldo del reporte anterior en
+  `%TEMP%\opencode\respaldo_eval_20261021_16casos` por si acaso.
+
 ### Lo que aprendimos de la cuota (TPD)
 - El límite diario de Groq (200 000 tokens **por modelo**) es una **ventana
   móvil de 24 h**, no un reinicio a medianoche: el contador `Used` sube y baja
