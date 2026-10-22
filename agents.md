@@ -413,7 +413,7 @@ EvaluacionIA1/
   *"Cotizacion ENVIADA…"* y `envios.jsonl` quedó con `modo: "smtp"` y
   `enviado: true`. Para enviar a una casilla real: `SMTP_USER`/`SMTP_PASSWORD`
   en `.env` (Gmail/Outlook: contraseña de aplicación) con `EMAIL_MODE="smtp"`.
-- **Sigue pendiente:** `git push` y entrega final (AVA + email docente).
+- **Sigue pendiente:** entrega final (AVA + email docente).
 - **Actualización 2026-10-22 — correo con Gmail real, entorno y documentación:**
   1. ✅ **Credenciales SMTP de Gmail**: contraseña de aplicación en `.env`
      (gitignored). Login OK en `smtp.gmail.com:587` con STARTTLS y **envío real
