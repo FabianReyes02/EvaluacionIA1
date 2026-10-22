@@ -18,6 +18,9 @@ data/internal/*.db
 data/internal/*.db-wal
 data/internal/*.db-shm
 
+# Copia del CSV que usan los evals (se regenera en cada corrida)
+data/internal/*_eval.csv
+
 # Evidencia de pruebas (se versiona)
 !tests/resultados/
 

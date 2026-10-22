@@ -6,7 +6,7 @@
 copy .env.example .env   # y pegar GROQ_API_KEY real (gsk_...)
 python ingestion/ingest.py --stats
 python scripts/verify_env.py        # LLM + tool-calling + agente + embeddings + Chroma
-python tests/eval_agent.py          # meta >= 85%; esperado 16/16 (pausa 15s entre casos)
+python tests/eval_agent.py          # meta >= 85%; esperado 18/18 (pausa 15s entre casos)
 python web/server.py                # probar health, chat multi-turno, reset
 ```
 
@@ -31,25 +31,36 @@ corruptos, reindexa la colección desde el origen y reintenta una vez.
 
 ## 1.b Verificación del envío de cotizaciones por correo (D13)
 
+Dos formas de verificarlo, ninguna gasta tokens del LLM:
+
 ```bash
-# 1) Sin credenciales SMTP el envío queda SIMULADO (no sale a internet):
-#    el chat "Cotiza el ALT-01 y envíamela a juan@ejemplo.com" debe dejar
-#    data/exports/cotizacion_*.eml y responder "preparada, NO se envió".
-# 2) Para envío real: EMAIL_MODE="smtp" + SMTP_USER/SMTP_PASSWORD
-#    (Gmail/Outlook: contraseña de aplicación) y reintentar.
-#    Alternativa sin tocar un correo real: sandbox de Mailtrap
-#    (sandbox.smtp.mailtrap.io / 2525, SMTP_TLS="0"), que retiene los
-#    mensajes en su panel y no los entrega a nadie.
-# 3) Cada envío queda registrado en data/exports/envios.jsonl.
+python scripts/configurar_correo.py                  # pide cuenta + contraseña de
+                                                     # aplicación (entrada oculta), escribe
+                                                     # el bloque en .env y prueba el login
+python scripts/test_email.py                         # config + login SMTP, NO envía
+python scripts/test_email.py --enviar tu@correo.com  # envío real de una cotización
+python scripts/test_email.py --dry                   # deja el .eml, no sale a internet
 ```
 
-La herramienta nunca afirma "enviada" si no la envió: sin credenciales responde
-*"preparada, no se envió"* y, si el SMTP falla, informa el error.
+Desde el agente (chat o web): *"Cotiza el ALT-01 y envíamela a juan@ejemplo.com"*.
+Si no se da la dirección, el agente la pide antes de llamar a la tool.
 
-**Verificado el 2026-10-21** con envío real contra el sandbox de Mailtrap: la
-tool respondió *"Cotizacion ENVIADA…"* y `envios.jsonl` registró
-`modo: "smtp"` y `enviado: true` (el veredicto solo es `true` si el servidor
-SMTP aceptó el mensaje).
+Comportamiento esperado:
+
+- **`EMAIL_MODE="smtp"` (default)**: el correo sale de verdad. El veredicto
+  solo es `enviado: true` si el servidor SMTP aceptó el mensaje.
+- **`EMAIL_MODE="dry"`** (o sin credenciales): no sale nada a internet; queda el
+  `.eml` en `data/exports/` y la tool responde *"preparada, NO se envió"*.
+- Cada envío queda registrado en `data/exports/envios.jsonl` (tipo,
+  destinatario, modo, enviado y detalle).
+- `EMAIL_DOMAINS_ALLOWLIST` restringe los dominios de destino (vacío = todos).
+
+**Verificado el 2026-10-22 con Gmail real** (contraseña de aplicación,
+`smtp.gmail.com:587` + STARTTLS): login OK y envío OK tanto desde
+`scripts/test_email.py` como desde el agente (`enviado: true` en
+`envios.jsonl`). El 2026-10-21 se había verificado contra el sandbox de
+Mailtrap. Para no mandar correos durante los evals:
+`EMAIL_MODE="dry" python tests/eval_agent.py`.
 
 ## 2. Límite de tasa Groq (plan gratuito: 8 000 TPM y 200 000 TPD por modelo)
 
@@ -66,12 +77,12 @@ SMTP aceptó el mensaje).
   ambos aplican **por modelo** (el de uno no gasta el del otro):
   - **TPM** (por minuto): 8 000 tokens/min → es el que dispara el 429 con
     "try again in Xs" y sí se puede reintentar esperando.
-  - **TPD** (por día): 200 000 tokens/día por modelo. La suite completa de 16
-    casos gasta ~45 000. Si se agota, el agente lo detecta **aparte**
+  - **TPD** (por día): 200 000 tokens/día por modelo. La suite completa de 18
+    casos gasta ~50 000. Si se agota, el agente lo detecta **aparte**
     (`is_daily_limit_error`), **no reintenta** (esperar 20-80s no sirve: la
     cuota se libera con el correr de la ventana de ~24 h) y avisa
     *"se agotó la cuota diaria; se reinicia en X"*.
-- **Suite reanudable** (cuando el TPD no alcanza para los 16 casos de una vez):
+- **Suite reanudable** (cuando el TPD no alcanza para los 18 casos de una vez):
   ```bash
   python tests/eval_agent.py --parcial tests/resultados/eval_parcial.jsonl   # corre y guarda caso a caso
   python tests/eval_agent.py --ensamblar tests/resultados/eval_parcial.jsonl # arma el reporte final
@@ -94,7 +105,8 @@ SMTP aceptó el mensaje).
 
 | Archivo | Contenido |
 |---|---|
-| `tests/resultados/eval_reporte.md` / `.json` | **16/16 (100 %)** — suite completa (incluye C16, envío por correo), modelo `openai/gpt-oss-120b`, 2026-10-21, 66 712 tokens, 0 reintentos. **C16 aprobado con envío SMTP real** (modo `smtp` contra el sandbox de Mailtrap) |
+| `tests/resultados/eval_reporte.md` / `.json` | **18/18 (100 %)** — suite completa de 18 casos (incluye C16 correo, C17 venta y C18 recomendación), modelo `openai/gpt-oss-120b`, 2026-10-22, 101 404 tokens, 0 reintentos. Corrida con `EMAIL_MODE="dry"` (los evals no mandan correos reales) |
+| `tests/resultados/eval_reporte_16casos_2026-10-21.md` / `.json` | **16/16 (100 %)** — corrida histórica con envío SMTP real a Mailtrap, 2026-10-21 |
 | `tests/resultados/eval_reporte_15casos_qwen_2026-10-19.md` / `.json` | **15/15 (100 %)** — corrida histórica con `qwen/qwen3.8-27b` (suite de 15 casos), 2026-10-19 |
 
 ## 3.b Pendientes conocidos (no bloquean, documentar en informe)
@@ -102,10 +114,9 @@ SMTP aceptó el mensaje).
 - `uv.lock` desactualizado (proyecto corre con `pip` + `requirements.txt`, D11).
 - Memoria largo plazo recorta por llegada, no resuelve contradicciones.
 - Datos simulados (`generate_sample_data.py`), no tienda real.
-- El envío de correo está verificado **en los dos modos**: `dry-run` (por
-  defecto, deja el `.eml` en `data/exports/`) y **SMTP real** (envío aceptado
-  por el servidor, con `modo: "smtp"` y `enviado: true` en
-  `data/exports/envios.jsonl`). La corrida de evidencia del 2026-10-21 se hizo
-  en modo `smtp` (destino: sandbox de Mailtrap, que retiene los mensajes y no
-  los entrega a nadie). Para enviar a un buzón real basta con poner
-  `SMTP_USER`/`SMTP_PASSWORD` (Gmail/Outlook: contraseña de aplicación).
+- El envío de correo está verificado **en los dos modos**: `smtp` (default, envío
+  real con `modo: "smtp"` y `enviado: true` en `data/exports/envios.jsonl`) y
+  `dry-run` (deja el `.eml` en `data/exports/`). La corrida de evidencia del
+  2026-10-21 se hizo en modo `smtp` (destino: sandbox de Mailtrap, que retiene
+  los mensajes y no los entrega a nadie); el 2026-10-22 se validó además con
+  **Gmail real** y contraseña de aplicación.

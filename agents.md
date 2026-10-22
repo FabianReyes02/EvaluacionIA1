@@ -36,7 +36,7 @@
 | D10 | Guardrails | Verificación **post-LLM** en `agent/guardrails.py`: todo código mencionado se contrasta con el CSV y todo stock crítico exige alerta | La regla es no negociable y un prompt no garantiza el comportamiento (el agente llegó a decir que guardó un dato sin llamar la tool) | Confiar solo en el system prompt |
 | D11 | Entorno | `pip` + `.venv` (Python 3.12 verificado el 2026-10-13; antes 3.13 en otra máquina) con `requirements.txt` congelado | `uv` no estaba disponible en la máquina de desarrollo; se priorizó poder ejecutar y evaluar el agente | Instalar uv y regenerar `uv.lock` (pendiente si se retoma D5) |
 | D12 | Resiliencia 429 | Reintentos con backoff **solo ante límite de tasa** en `agent/agent.py` + `agent/llm_client.py` (4 intentos, 20s/40s/60s/80s, env `AGENT_RETRY_ATTEMPTS`/`AGENT_RETRY_BASE_S`); mensaje amable + fallback CSV si se agotan. En evals, **pausa configurable `--pausa`** (15s por caso) para no agotar el cupo. **El límite diario de tokens (TPD) se detecta aparte** (`is_daily_limit_error`): no se reintenta (esperar 20-80s no sirve si la cuota reinicia a la medianoche) y el mensaje dice que la cuota se reinicia en X. **Suite reanudable**: `tests/eval_agent.py --parcial/--ensamblar` corre los casos de a uno y arma el reporte al final; un caso bloqueado por cuota queda pendiente, no aprobado ni fallado | El plan gratuito Groq limita a 8 000 TPM y **200 000 TPD por modelo** (no 1 000 OTPM como se creía; son 2 límites distintos y confundirlos hacía gastar 200 s por caso en reintentos inútiles). El TPD se agota en una ventana de ~24 h: reintentar no lo recupera, solo lo corre la ventana | Reintentar errores genéricos, solo confiar en el fallback seco, o perder la corrida completa cuando el cuota no alcanza |
-| D13 | Envío de cotizaciones por correo | Tool `enviar_cotizacion_email` (`agent/tools.py`) + módulo `tools/email_sender.py` sobre **SMTP de la stdlib** (`smtplib`), **dry-run por defecto**: sin credenciales el correo queda como `.eml` en `data/exports/` y no sale a internet. Allowlist opcional de dominios (`EMAIL_DOMAINS_ALLOWLIST`) y registro de cada envío en `data/exports/envios.jsonl` | Cero dependencias nuevas y cero API keys: SMTP con contraseña de aplicación funciona en Gmail/Outlook. El dry-run evita que un prototipo o una corrida de evals mande un correo real por error, y el `.eml` deja el cuerpo exacto para revisión. El cuerpo se arma con los precios del CSV, no con lo que dice el modelo. **Verificado con envío real el 2026-10-21** contra el sandbox de Mailtrap (`modo: "smtp"`, `enviado: true` solo si el servidor SMTP aceptó el mensaje; los correos quedan atrapados en el panel de Mailtrap y no llegan a ningún destinatario real) | API de proveedor (SendGrid/Resend/Brevo: clave + dependencia extra), o envío real sin dry-run (un error del LLM llega al cliente) |
+| D13 | Envío de cotizaciones por correo | Tool `enviar_cotizacion_email` (`agent/tools.py`) + módulo `tools/email_sender.py` sobre **SMTP de la stdlib** (`smtplib`), con **envío real por defecto** (`EMAIL_MODE="smtp"`) y **dry-run opcional** (`EMAIL_MODE="dry"`): en dry, o si faltan credenciales, el correo queda como `.eml` en `data/exports/` y no sale a internet. Allowlist opcional de dominios (`EMAIL_DOMAINS_ALLOWLIST`) y registro de cada envío en `data/exports/envios.jsonl` | Cero dependencias nuevas y cero API keys: SMTP con contraseña de aplicación funciona en Gmail/Outlook. El dry-run sigue disponible para prototipos y para las corridas de evals (`EMAIL_MODE="dry" python tests/eval_agent.py`), y el `.eml` deja el cuerpo exacto para revisión. El cuerpo se arma con los precios del CSV, no con lo que dice el modelo. **Verificado con envío real el 2026-10-22 con Gmail** (`smtp.gmail.com:587` + contraseña de aplicación: login OK y `enviado: true` desde el script y desde el agente) y el 2026-10-21 contra el sandbox de Mailtrap (`modo: "smtp"`, `enviado: true` solo si el servidor SMTP aceptó el mensaje; los correos quedan atrapados en el panel de Mailtrap y no llegan a ningún destinatario real) | API de proveedor (SendGrid/Resend/Brevo: clave + dependencia extra), Gmail API con OAuth2 (evaluada y descartada: solo haría falta si la cuenta es Workspace con contraseñas de aplicación deshabilitadas), o envío real sin dry-run disponible (un error del LLM llega al cliente) |
 | D14 | Robustez del RAG y contrato de las tools | `agent/rag.py` **se repara solo**: si la consulta a ChromaDB falla por segmentos corruptos, reindexa la colección desde el origen (PDF/CSV) y reintenta una vez. Las tools devuelven un mensaje **inequívoco**: el filtro por tipo distingue match exacto de aproximado (`coincide_tipo()`) y lo dice ("no hay 'filtro de aceite' exacto; la más cercana es FLT-02") | Un RAG caído **falla en silencio**: el chat sigue respondiendo, pero sin evidencia el agente degradaba a "no tengo información suficiente" y perdía el caso de eval (C09). Y una tool ambigua hace que el modelo ignore el dato que sí tenía (C02: nunca citaba FLT-02) | Dejar que la tool devuelva un listado sin contexto, o que el RAG degrade sin avisar, o "arreglar" el prompt para tapar un bug de la tool |
 | D15 | Base de datos interna (stock real) | **`tools/db.py`**: SQLite de la stdlib (`data/internal/tienda.db`, gitignored) con tablas `repuestos`, `ventas`, `venta_items` y `movimientos_stock`. La BD es la **verdad del stock**; el CSV sigue siendo el catálogo y se re-sincroniza (columna `stock`) después de cada venta. `load_inventory()` devuelve el catálogo del CSV con el stock real de la BD | Cero dependencias nuevas (`sqlite3` es stdlib) y estado persistente real: las ventas bajan existencias de verdad y quedan auditadas. El CSV re-sincronizado evita que guardrails, tools, RAG y la web muestren stock viejo. `TIENDA_DB_PATH` aísla la BD (los evals usan una aparte) | Solo CSV (el stock no se descontaría de verdad), SQLAlchemy/Postgres (dependencia extra y servidor que instalar), o guardar el stock en el JSONL de memoria |
 | D16 | Herramientas de venta y recomendación | **`registrar_venta`** (tool de escritura: registra la venta, descuenta stock, re-sincroniza el CSV, reindexa el RAG y opcionalmente manda el comprobante) y **`recomendar_repuesto`** (pipeline completo del encargo: RAG interno + compatibilidad + RAG de manuales con cita de fuente). El **correo pasa a envío real por SMTP por defecto** (`EMAIL_MODE="smtp"`) | El encargo pide que el stock en stock crítico avise y que el agente sea útil de punta a punta; sin una tool de venta el stock nunca cambiaba y la alerta era decorativa. La recomendación evita que el modelo improvise: la tool devuelve el código con su fuente | Confiar en el prompt para que el modelo "baje el stock", o una tool que solo simule sin persistir |
@@ -76,7 +76,7 @@ EvaluacionIA1/
 │   └── exports/                    ◌ runtime (gitignored): cotizaciones que escribe el agente (JSON, .eml preparados y envios.jsonl)
 ├── agent/
 │   ├── agent.py                    ✓ orquestador: create_agent + ejecución de cada turno
-│   ├── tools.py                    ✓ 7 tools: consulta, escritura y memoria
+│   ├── tools.py                    ✓ 9 tools: consulta, escritura, memoria y venta
 │   ├── memory.py                   ✓ memoria de corto y largo plazo (Fase 3)
 │   ├── rag.py                      ✓ ingesta PDF+CSV → ChromaDB (Fase 1)
 │   ├── guardrails.py               ✓ verificación post-LLM (Fase 4)
@@ -90,17 +90,21 @@ EvaluacionIA1/
 │   └── ingest.py                   ✓ CLI de ingesta RAG (Fase 1)
 ├── tools/
 │   ├── inventory_lookup.py         ✓ búsqueda y diagnóstico sobre inventory.csv
-│   └── email_sender.py             ✓ armado y envío del correo (SMTP stdlib, dry-run por defecto)
+│   ├── db.py                       ✓ BD interna SQLite: stock real, ventas y movimientos (D15)
+│   └── email_sender.py             ✓ armado y envío del correo (SMTP stdlib, real por defecto, dry opcional)
 ├── web/
 │   ├── server.py                   ✓ servidor HTTP + API JSON
 │   └── static/index.html           ✓ interfaz: chat, búsqueda e inventario
 ├── main.py                         ✓ CLI marca/modelo/año → precio y stock
 ├── tests/
-│   ├── eval_dataset.json           ✓ 16 casos con criterios y justificación
+│   ├── eval_dataset.json           ✓ 18 casos con criterios y justificación
 │   ├── eval_agent.py               ✓ corre la suite y genera el reporte
+│   ├── test_herramientas.py        ✓ pytest de las tools (sin gastar tokens del LLM)
 │   └── resultados/                 ✓ evidencia: eval_reporte.md / .json
 ├── scripts/
 │   ├── verify_env.py               ✓ LLM, tool-calling, agente, embeddings, Chroma
+│   ├── configurar_correo.py        ✓ escribe las credenciales SMTP en .env y prueba el login
+│   ├── test_email.py               ✓ prueba el correo: preflight, envío real y dry-run
 │   └── generate_sample_data.py     ✓ genera inventory.csv + manuales PDF
 └── requirements.txt                ✓ dependencias congeladas (pip)
 ```
@@ -117,10 +121,11 @@ EvaluacionIA1/
       (`tools/inventory_lookup.py`, `agent/trace.py`)
 - [x] Fase 4 — Guardrails de seguridad: negativa sin fuente y alerta de stock
       (`agent/guardrails.py`)
-- [x] Fase 5 — Evals: 16 casos (≥3 alerta/negativa), meta ≥85 % → **16/16 (100 %)** el
-      2026-10-21 con `openai/gpt-oss-120b` (suite de 16, incluye el envío por correo);
-      la corrida de **15/15 (100 %)** del 2026-10-19 con `qwen/qwen3.8-27b` queda
-      archivada en `tests/resultados/eval_reporte_15casos_qwen_2026-10-19.md`
+- [x] Fase 5 — Evals: 18 casos (≥3 alerta/negativa), meta ≥85 % → **18/18 (100 %)** el
+      2026-10-22 con `openai/gpt-oss-120b` (incluye envío por correo, venta con
+      descuento de stock y recomendación); la corrida de 16/16 del 2026-10-21 y la de
+      **15/15 (100 %)** del 2026-10-19 con `qwen/qwen3.8-27b` quedan archivadas en
+      `tests/resultados/`
 - [x] Fase 6 — README con instrucciones precisas, estructura y referencias APA
       + `docs/diagramas.md` (orquestación y flujos Mermaid, IE7/IE9)
       + `docs/CHECKLIST_ENTREGA.md` (verificación y entregables)
@@ -318,8 +323,49 @@ EvaluacionIA1/
   BD, descuento de stock, reversa por falta de stock, sincronización del CSV,
   rechazo de códigos inexistentes, recomendación, y correo en modo `dry` y en
   modo `smtp` real contra un servidor SMTP local de prueba.
+- **2026-10-22 (segunda tanda) — correo real con Gmail + setup reproducible.**
+  Se configuró Gmail real con **contraseña de aplicación** (`smtp.gmail.com:587`
+  + STARTTLS) y se verificó el envío de punta a punta: login OK, envío desde
+  `scripts/test_email.py` y **desde el agente** (el modelo eligió
+  `enviar_cotizacion_email`, la tool armó el cuerpo con el CSV y el servidor
+  aceptó el mensaje; `envios.jsonl` quedó con `modo: "smtp"` y
+  `enviado: true`). Se descartó explícitamente la **Gmail API con OAuth2**: solo
+  haría falta si la cuenta fuese Workspace con las contraseñas de aplicación
+  deshabilitadas, y exigiría dependencias y un flujo OAuth nuevo para un
+  requisito que SMTP ya cubre.
+  Se agregaron dos scripts para no depender de editar el `.env` a mano:
+  `configurar_correo.py` (pide cuenta y contraseña con `getpass`, reescribe el
+  bloque sin duplicados y prueba el login) y `test_email.py` (preflight sin
+  enviar, envío real y `--dry`). Además:
+  1. `SMTP_PASSWORD` se normaliza con `.strip()` en `get_email_config()` (Google
+     muestra la contraseña con espacios y un espacio colado producía un 535);
+  2. `verify_env.py` leía las API keys sin `.strip()` y un salto de línea dentro
+     de `GROQ_API_KEY` en el `.env` lo hacía fallar con *"Connection error"*
+     (`Illegal header value b'Bearer gsk_...\n'`), un síntoma que parecía red;
+  3. nuevo `EXPORTS_DIR` (en `agent/tools.py` y `tools/email_sender.py`) para que
+     los tests escriban sus cotizaciones en una carpeta temporal y no mezclen
+     ruido con la evidencia real de `data/exports/`;
+  4. documentación alineada con el código: el default **es** `smtp` (no dry-run),
+     README con 9 tools y 18 casos, y `EMAIL_FROM` documentado como *nombre
+     visible* (la dirección siempre es `SMTP_USER`, que es lo que Gmail exige).
+- **2026-10-22 (tercera tanda) — primera evidencia de 18 casos y arreglo de C18.**
+  La suite completa con `qwen/qwen3.8-27b` dio **17/18 (94,4 %)**: C18
+  (recomendación) falló con *"no uso la herramienta 'recomendar_repuesto'"*.
+  No era flakiness: reproducido aislado dos veces, el modelo respondía
+  *"¿Qué tipo de repuesto necesitas?"* en vez de llamar a la tool. La causa era
+  el prompt: la regla 13 decía que llamara a `recomendar_repuesto` con marca,
+  modelo y año, pero no aclaraba que **`tipo_repuesto` es opcional** ni que
+  debía llamar en la misma respuesta. Se reescribió la regla 13 (*"no le
+  preguntes primero qué tipo de repuesto necesita... preguntarlo antes de
+  llamarla es un error"*) y se reforzó el docstring de la tool. C18 pasó
+  aislado con el arreglo. Como la cuota diaria de `qwen/qwen3.8-27b` se agotó
+  (197 267/200 000 TPD), la evidencia definitiva se regeneró con
+  `openai/gpt-oss-120b`: **18/18 (100 %)**, 101 404 tokens, 0 reintentos, en
+  modo `EMAIL_MODE="dry"`. La corrida de 16/16 quedó archivada como
+  `eval_reporte_16casos_2026-10-21.{md,json}` y se agregó
+  `data/internal/*_eval.csv` al `.gitignore` (lo genera el runner).
 
-## 8. En progreso (actualizado 2026-10-21)
+## 8. En progreso (actualizado 2026-10-22)
 
 - **Límite de tasa del plan gratuito de Groq: son DOS límites, no uno.** El
   real es **8 000 tokens/min (TPM) y 200 000 tokens/día (TPD) por modelo**
@@ -367,21 +413,36 @@ EvaluacionIA1/
   *"Cotizacion ENVIADA…"* y `envios.jsonl` quedó con `modo: "smtp"` y
   `enviado: true`. Para enviar a una casilla real: `SMTP_USER`/`SMTP_PASSWORD`
   en `.env` (Gmail/Outlook: contraseña de aplicación) con `EMAIL_MODE="smtp"`.
-- **Sigue pendiente:** commit + push y entrega final (AVA + email docente).
-- **PENDIENTE para la próxima sesión (2026-10-22):**
-  1. **Credenciales SMTP**: falta pegar en `.env` (gitignored) el `SMTP_USER` y el
-     `SMTP_PASSWORD`. Para el sandbox de Mailtrap: `SMTP_HOST="sandbox.smtp.mailtrap.io"`,
-     `SMTP_PORT="2525"`, `SMTP_TLS="0"`. Para Gmail real: `smtp.gmail.com:587`,
-     `SMTP_TLS="1"` y una **contraseña de aplicación** (Google Account > Security >
-     2-Step Verification > App passwords). El modo por defecto ya es `smtp` (real).
-  2. **Entorno**: este checkout no traía `.venv`; se creó e instalaron las
-     dependencias (`pip install -r requirements.txt`, con torch: descarga pesada).
-     Falta terminar esa instalación y correr `python scripts/verify_env.py`.
-  3. **Evals**: correr la suite de 18 casos (`python tests/eval_agent.py --pausa 15`).
-     Si la cuota diaria de Groq está agotada, usar `--parcial`/`--ensamblar`. La
-     evidencia nueva (18/18) todavía no está generada en `tests/resultados/`.
-  4. **README y `docs/diagramas.md`**: documentar la BD interna, el flujo de venta
-     y el correo real (la tabla de tools del README sigue diciendo 7).
+- **Sigue pendiente:** `git push` y entrega final (AVA + email docente).
+- **Actualización 2026-10-22 — correo con Gmail real, entorno y documentación:**
+  1. ✅ **Credenciales SMTP de Gmail**: contraseña de aplicación en `.env`
+     (gitignored). Login OK en `smtp.gmail.com:587` con STARTTLS y **envío real
+     verificado** desde `scripts/test_email.py` y desde el agente
+     (`enviado: true` en `data/exports/envios.jsonl`). Se agregaron
+     `scripts/configurar_correo.py` (entrada oculta; escribe el bloque en `.env`
+     sin duplicados y prueba el login) y `scripts/test_email.py` (preflight,
+     envío real y dry-run), y `SMTP_PASSWORD` ahora se normaliza con `.strip()`
+     (Google muestra la contraseña con espacios y un espacio colado da 535).
+  2. ✅ **Entorno completo**: `.venv` con Python 3.12.10 + `pip install -r
+     requirements.txt`; `scripts/verify_env.py` todo verde (LLM, tool-calling,
+     9 tools, embeddings 384d, Chroma) y `ingestion/ingest.py --force`
+     reconstruyó el índice (3 manuales + 12 inventario).
+     `pytest tests/test_herramientas.py` → 16/16.
+     Se corrigió `verify_env.py`: leía las API keys sin `.strip()` y un salto de
+     línea dentro de `GROQ_API_KEY` en el `.env` lo hacía fallar con un
+     *"Connection error"* engañoso (`Illegal header value`).
+  3. ✅ **Evals de 18 casos**: **18/18 (100 %)** con `openai/gpt-oss-120b`,
+     101 404 tokens y 0 reintentos, corridos con `EMAIL_MODE="dry"` para no
+     mandar correos reales durante la suite. La corrida 16/16 del 2026-10-21
+     quedó archivada como `eval_reporte_16casos_2026-10-21.{md,json}`.
+  4. ✅ **Documentación al día**: README (9 tools, 18 casos, `EMAIL_MODE=smtp`,
+     `EMAIL_FROM` como nombre visible, scripts nuevos y `EXPORTS_DIR`),
+     `docs/diagramas.md` (el dry dejó de ser el default), 
+     `docs/CHECKLIST_ENTREGA.md` (verificación del correo con los scripts) y
+     D13 reescrita.
   5. La venta **sí** deja el `inventory.csv` del checkout modificado (es el stock
      real); para trabajar sobre datos limpios, `git checkout data/internal/inventory.csv`
      o borrar `data/internal/tienda.db`.
+  6. Los tests ya no contaminan la evidencia: `tests/test_herramientas.py` apunta
+     `EXPORTS_DIR` a una carpeta temporal (antes escribía en el
+     `data/exports/envios.jsonl` real).

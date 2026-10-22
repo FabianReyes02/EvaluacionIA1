@@ -109,7 +109,7 @@ stock. Sin API key cae a búsqueda directa sobre el CSV.
 ### 3. Evaluación (evidencia de pruebas)
 
 ```bash
-python tests/eval_agent.py                 # 16 casos, meta ≥ 85% (pausa 15s entre casos)
+python tests/eval_agent.py                 # 18 casos, meta ≥ 85% (pausa 15s entre casos)
 python tests/eval_agent.py --solo C01,C07  # subconjunto
 python tests/eval_agent.py --pausa 0       # sin pausa (proveedor de pago / cuota amplia)
 ```
@@ -135,13 +135,29 @@ herramientas usadas, guardrails activados, reintentos por 429, tokens y
 respuesta de cada caso). La corrida histórica del 2026-10-19 (suite de 15
 casos) queda archivada en `eval_reporte_15casos_qwen_2026-10-19.{md,json}`.
 
+### 4. Pruebas de las herramientas (sin gastar tokens)
+
+```bash
+python -m pytest tests/test_herramientas.py -v   # 16 tests: BD, ventas, stock y correo
+python scripts/verify_env.py                     # LLM, tool-calling, agente, embeddings y Chroma
+```
+
+Para el correo, sin pasar por el LLM:
+
+```bash
+python scripts/configurar_correo.py                 # guarda credenciales en .env (entrada oculta)
+python scripts/test_email.py                        # verifica config + login SMTP, NO envía
+python scripts/test_email.py --enviar tu@correo.com # envía una cotización real
+python scripts/test_email.py --dry                  # deja el .eml en data/exports/, no sale a internet
+```
+
 ## 📁 Estructura
 
 ```
 EvaluacionIA1/
 ├── agent/
 │   ├── agent.py          Orquestador: crea el agente y ejecuta cada interaccion
-│   ├── tools.py          7 herramientas (consulta / escritura / memoria)
+│   ├── tools.py          9 herramientas (consulta / escritura / memoria / venta)
 │   ├── memory.py         Memoria de corto y largo plazo
 │   ├── rag.py            Ingesta PDF+CSV -> embeddings -> ChromaDB
 │   ├── guardrails.py     Verificacion POST-LLM (codigos y stock)
@@ -150,21 +166,25 @@ EvaluacionIA1/
 │   └── trace.py          Log JSONL de las decisiones (logs/trace.jsonl)
 ├── tools/
 │   ├── inventory_lookup.py   Busqueda y diagnostico sobre el CSV
-│   └── email_sender.py       Armado y envio del correo (SMTP, dry-run por defecto)
+│   ├── db.py                 Base interna SQLite: stock real, ventas y movimientos
+│   └── email_sender.py       Armado y envio del correo (SMTP real, dry-run opcional)
 ├── ingestion/
 │   └── ingest.py         CLI de ingesta RAG
 ├── web/
 │   ├── server.py         Servidor HTTP + API JSON
 │   └── static/index.html Interfaz (chat + búsqueda + inventario)
 ├── tests/
-│   ├── eval_dataset.json 16 casos con lo esperado y su justificación
+│   ├── eval_dataset.json 18 casos con lo esperado y su justificación
 │   ├── eval_agent.py     Ejecuta la suite y genera el reporte
+│   ├── test_herramientas.py  Pytest de las tools (sin gastar tokens del LLM)
 │   └── resultados/       Evidencia generada (eval_reporte.{md,json} + corrida 15/15 archivada)
 ├── docs/
 │   ├── diagramas.md      Orquestación y flujos (Mermaid, IE7/IE9)
 │   └── CHECKLIST_ENTREGA.md  Verificación + entregables AVA/email
 ├── scripts/
 │   ├── verify_env.py         Verifica LLM, tool-calling, agente, embeddings y Chroma
+│   ├── configurar_correo.py  Configura las credenciales SMTP en .env y prueba el login
+│   ├── test_email.py         Prueba el correo (preflight / envío real / dry-run)
 │   └── generate_sample_data.py  Genera CSV y manuales PDF de ejemplo
 ├── data/
 │   ├── internal/inventory.csv
@@ -253,7 +273,7 @@ SMTP_PORT="587"
 SMTP_USER="tu-correo@gmail.com"
 SMTP_PASSWORD="..."             # Gmail/Outlook: CONTRASEÑA DE APLICACIÓN
 SMTP_TLS="1"                   # 1 = STARTTLS (587), SMTP_SSL="1" = 465
-EMAIL_FROM="Repuestos Sur <cotizaciones@repuestosur.cl>"
+EMAIL_FROM="Repuestos Sur"      # solo nombre visible; la dirección es SMTP_USER
 EMAIL_DOMAINS_ALLOWLIST=""     # ej: "clientesur.cl" (vacío = sin restricción)
 ```
 
@@ -322,11 +342,13 @@ Orquestación, flujos feliz/negativa y memoria en [`docs/diagramas.md`](docs/dia
 | `EMBEDDING_MODEL` | Modelo de embeddings locales | `paraphrase-multilingual-MiniLM-L12-v2` |
 | `MEMORIA_FILE` / `MEMORIA_COLLECTION` | Ruta y colección de la memoria (los tests las aíslan) | `data/memory/memoria.jsonl` / `memoria` |
 | `AGENT_RETRY_ATTEMPTS` / `AGENT_RETRY_BASE_S` | Reintentos solo ante 429 y espera base (20s,40s,60s,80s) | `4` / `20` |
-| `EMAIL_MODE` | `auto` (smtp si hay credenciales, dry si no), `smtp` o `dry` | `auto` |
+| `EMAIL_MODE` | `auto` (smtp si hay credenciales, dry si no), `smtp` o `dry` | `smtp` |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | Servidor y credenciales SMTP (Gmail/Outlook: contraseña de aplicación) | `smtp.gmail.com` / `587` / — / — |
 | `SMTP_TLS` / `SMTP_SSL` / `EMAIL_TIMEOUT_S` | STARTTLS, SSL directo (465) y timeout de espera | `1` / `0` / `15` |
-| `EMAIL_FROM` | Remitente con nombre visible | `Repuestos Sur <cotizaciones@repuestosur.cl>` |
+| `EMAIL_FROM` | Remitente con nombre visible (la dirección siempre es `SMTP_USER`) | `Repuestos Sur` |
 | `EMAIL_DOMAINS_ALLOWLIST` | Dominios permitidos para envío (vacío = todos) | — |
+| `INVENTORY_PATH` / `TIENDA_DB_PATH` | CSV del catálogo y BD SQLite del stock real (los tests y evals los aíslan) | `data/internal/inventory.csv` / `data/internal/tienda.db` |
+| `EXPORTS_DIR` | Carpeta de cotizaciones, `.eml` y `envios.jsonl` (los tests la aíslan) | `data/exports` |
 
 ## 📊 Resultado de las pruebas
 
@@ -334,26 +356,29 @@ Orquestación, flujos feliz/negativa y memoria en [`docs/diagramas.md`](docs/dia
 
 | | |
 |---|---|
-| Casos aprobados | **16/16 (100 %)** — meta ≥ 85 % |
+| Casos aprobados | **18/18 (100 %)** — meta ≥ 85 % |
 | Modelo | `openai/gpt-oss-120b` (Groq, 2.º respaldo de D8) |
-| Cobertura | búsqueda, validación, negativas, alerta de stock, fuera de contexto, RAG, compatibilidad, guardrails, escritura, memoria entre sesiones y envío por correo |
-| Tokens | 66 712 (0 reintentos 429) |
-| Modo de correo | **smtp** — el caso C16 envió el correo de verdad (sandbox de Mailtrap: queda atrapado en el panel, no llega a nadie) |
-| Fecha | 2026-10-21 |
+| Cobertura | búsqueda, validación, negativas, alerta de stock, fuera de contexto, RAG, compatibilidad, guardrails, escritura, memoria entre sesiones, envío por correo, venta con descuento de stock y recomendación |
+| Tokens | 101 404 (0 reintentos 429) |
+| Modo de correo | **dry** — la suite no manda correos reales (`EMAIL_MODE="dry"`); el envío real está verificado aparte |
+| Fecha | 2026-10-22 |
 
 Detalle por caso en [`tests/resultados/eval_reporte.md`](tests/resultados/eval_reporte.md).
 
-> Corridas anteriores: **15/15 (100 %)** el 2026-10-19 con
-> `qwen/qwen3.8-27b` (modelo principal de D8) sobre la suite de 15 casos, y
-> **14/16 (87,5 %)** con `openai/gpt-oss-120b` antes de arreglar el índice RAG y
-> el contrato de las tools. La corrida del 2026-10-19 está archivada en
-> [`eval_reporte_15casos_qwen_2026-10-19.md`](tests/resultados/eval_reporte_15casos_qwen_2026-10-19.md).
-> La corrida con `qwen/qwen3.8-27b` sobre los 16 casos no se ha podido
-> completar: su **cuota diaria de tokens (TPD)** es una ventana **móvil de 24 h**
-> por modelo (200 000 tokens) y al agotarse solo se liberan unos ~30 tokens/min
-> (los tokens van saliendo de la ventana conforme envejecen las peticiones).
-> Cada modelo tiene su propio cubo, así que con el 120b la suite sí corre
-> completo.
+> Corridas anteriores: **17/18 (94,4 %)** el 2026-10-22 con `qwen/qwen3.8-27b`
+> (falló C18 porque el modelo pedía el tipo de repuesto en vez de llamar a la
+> tool; se corrigió la regla 13 del prompt), **16/16 (100 %)** el 2026-10-21 con
+> `openai/gpt-oss-120b` (archivada en
+> [`eval_reporte_16casos_2026-10-21.md`](tests/resultados/eval_reporte_16casos_2026-10-21.md)),
+> **15/15 (100 %)** el 2026-10-19 con `qwen/qwen3.8-27b` sobre la suite de 15
+> casos (archivada en
+> [`eval_reporte_15casos_qwen_2026-10-19.md`](tests/resultados/eval_reporte_15casos_qwen_2026-10-19.md)),
+> y **14/16 (87,5 %)** con `openai/gpt-oss-120b` antes de arreglar el índice RAG y
+> el contrato de las tools.
+> La repetición de los 18 casos con `qwen/qwen3.8-27b` no se pudo completar: su
+> **cuota diaria de tokens (TPD)** es una ventana **móvil de 24 h** por modelo
+> (200 000 tokens) y se agotó en la corrida (197 267 usados). Cada modelo tiene
+> su propio cubo, así que con el 120b la suite corre completo.
 
 ## ⚠️ Limitaciones
 

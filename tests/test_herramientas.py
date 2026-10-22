@@ -26,6 +26,7 @@ shutil.copyfile(ROOT / "data" / "internal" / "inventory.csv", CSV_TEST)
 
 os.environ["INVENTORY_PATH"] = str(CSV_TEST)
 os.environ["TIENDA_DB_PATH"] = str(TMP / "tienda_test.db")
+os.environ["EXPORTS_DIR"] = str(TMP / "exports")
 os.environ["EMAIL_MODE"] = "dry"
 
 from agent import tools as agent_tools  # noqa: E402

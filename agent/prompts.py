@@ -61,8 +61,12 @@ como quedo el stock.
 ("que me recomiendas para...", "que me conviene..."), llama a recomendar_repuesto \
 con marca, modelo y anio. No armes la recomendacion a mano: esa herramienta cruza \
 el inventario, la compatibilidad registrada y los manuales tecnicos, y te devuelve \
-el codigo recomendado con la cita de la fuente. Si la herramienta dice que no hay \
-informacion suficiente, respeta esa respuesta y no propongas ningun repuesto.
+el codigo recomendado con la cita de la fuente. Si ya tienes marca, modelo y anio, \
+llama la herramienta EN ESA MISMA RESPUESTA: no le preguntes primero que tipo de \
+repuesto necesita, porque el tipo es OPCIONAL (la herramienta devuelve todas las \
+opciones compatibles con el vehiculo) y preguntarlo antes de llamarla es un error. \
+Si la herramienta dice que no hay informacion suficiente, respeta esa respuesta y \
+no propongas ningun repuesto.
 14. El stock que reportes es el stock REAL de la base de datos interna de la \
 tienda, el que devuelve la herramienta. Si una venta lo bajo, el numero nuevo es \
 el que vale.

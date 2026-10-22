@@ -1,12 +1,12 @@
 {
-  "fecha": "2026-10-21T20:30:35",
+  "fecha": "2026-10-22T15:12:45",
   "proveedor": "groq",
   "modelo": "openai/gpt-oss-120b",
   "meta": 85,
-  "aprobados": 16,
-  "total": 16,
+  "aprobados": 18,
+  "total": 18,
   "porcentaje": 100.0,
-  "tokens": 66712,
+  "tokens": 101404,
   "resultados": [
     {
       "id": "C01",
@@ -18,7 +18,7 @@
       "session": "eval-C01",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:30:35",
+      "fecha": "2026-10-22T15:05:37",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Debe recuperar el repuesto real del CSV citando su codigo (IE1).",
@@ -28,15 +28,15 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4679,
-        "completion": 188,
-        "total": 4867
+        "prompt": 6311,
+        "completion": 255,
+        "total": 6566
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 1.5,
-      "respuesta": "Para tu Suzuki Swift 2015 encontré el alternador:\n\n[ALT-01] Alternador 12 V 90 A - $289 990 - Stock: 7 unidades."
+      "duracion_s": 3.6,
+      "respuesta": "Para tu Suzuki Swift 2015 encontré los siguientes alternadores:\n\n- **[ALT-01] Alternador 12 V 90 A** - $289 990 - Stock: 7 unidades.  \n- **[COR-01] Correa de alternador 1.130 mm** - $15 990 - Stock: 40 unidades.  "
     },
     {
       "id": "C02",
@@ -48,7 +48,7 @@
       "session": "eval-C02",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:30:48",
+      "fecha": "2026-10-22T15:06:28",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Filtra por tipo de pieza dentro del inventario compatible.",
@@ -58,15 +58,15 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4702,
-        "completion": 297,
-        "total": 4999
+        "prompt": 6334,
+        "completion": 302,
+        "total": 6636
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 1.6,
-      "respuesta": "No tengo disponible un **filtro de aceite** para el Hyundai Accent 2016.  \n\nLa coincidencia más cercana que sí está en nuestro inventario es:\n\n[FLT-02] Filtro de aire motor - $12 990 - Stock: 45 unidades.  \n\nSi te sirve este filtro de aire o necesitas buscar otra alternativa, avísame y con gusto te ayudo."
+      "duracion_s": 35.7,
+      "respuesta": "Lo siento, en nuestro inventario no contamos con un **filtro de aceite** para el Hyundai Accent 2016.  \n\nLa coincidencia más cercana que sí está disponible es:\n\n- **[FLT-02] Filtro de aire motor** - $12.990 - Stock: 45 unidades.\n\nSi necesitas otro tipo de filtro o tienes alguna otra consulta, avísame y con gusto te ayudo."
     },
     {
       "id": "C03",
@@ -78,7 +78,7 @@
       "session": "eval-C03",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:31:07",
+      "fecha": "2026-10-22T15:06:44",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Fase de validacion: pide los datos obligatorios antes de buscar (IE5/IE6).",
@@ -86,15 +86,15 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 2280,
-        "completion": 80,
-        "total": 2360
+        "prompt": 4120,
+        "completion": 77,
+        "total": 4197
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 6.8,
-      "respuesta": "¡Claro! Para encontrar el repuesto correcto necesito saber a qué vehículo lo vas a instalar.\n\n¿Me podrías indicar la marca, el modelo y el año de tu auto?"
+      "duracion_s": 0.7,
+      "respuesta": "¡Claro! Para encontrar el repuesto correcto necesito los datos de tu auto:\n\n- Marca  \n- Modelo  \n- Año  \n\n¿Me los puedes indicar, por favor?"
     },
     {
       "id": "C04",
@@ -106,7 +106,7 @@
       "session": "eval-C04",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:31:26",
+      "fecha": "2026-10-22T15:07:00",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Detecta un anio imposible y explica el problema sin inventar.",
@@ -114,15 +114,15 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 2281,
-        "completion": 166,
-        "total": 2447
+        "prompt": 3097,
+        "completion": 210,
+        "total": 3307
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 6.8,
-      "respuesta": "¡Claro! Para buscar los repuestos correctos necesito saber el año de tu Suzuki Swift. ¿Podrías indicarme el modelo (año) que tenés?"
+      "duracion_s": 1.4,
+      "respuesta": "¡Claro! Para buscar los repuestos compatibles necesito saber el año de tu Suzuki Swift. ¿Podrías indicármelo, por favor?"
     },
     {
       "id": "C05",
@@ -134,25 +134,23 @@
       "session": "eval-C05",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:32:03",
+      "fecha": "2026-10-22T15:07:17",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Regla no negociable: niega sin inventar repuestos ni codigos.",
-      "herramientas": [
-        "buscar_repuesto"
-      ],
+      "herramientas": [],
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4644,
-        "completion": 311,
-        "total": 4955
+        "prompt": 3100,
+        "completion": 260,
+        "total": 3360
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 24.8,
-      "respuesta": "No tengo información suficiente porque la marca **Ferrari** no está incluida en nuestro inventario de repuestos. Por favor, indícame una marca que sí manejamos (por ejemplo, Suzuki, Kia, Hyundai o Chevrolet) y con gusto busco el repuesto que necesites."
+      "duracion_s": 1.6,
+      "respuesta": "No tengo información suficiente: el vehículo **Ferrari 488 2020** no está incluido en nuestro catálogo de repuestos. Si necesita repuestos para alguno de los modelos que manejamos (Suzuki Swift, Kia Rio 4, Hyundai Accent, Chevrolet Sail, Chevrolet Corsa o Chevrolet Spark), por favor indíquelo y con gusto le ayudo."
     },
     {
       "id": "C06",
@@ -164,7 +162,7 @@
       "session": "eval-C06",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:32:26",
+      "fecha": "2026-10-22T15:07:53",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Diagnostica que el problema es el modelo, no la marca.",
@@ -174,15 +172,15 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4656,
-        "completion": 439,
-        "total": 5095
+        "prompt": 6288,
+        "completion": 305,
+        "total": 6593
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 11.0,
-      "respuesta": "No tengo información suficiente para el modelo **Suzuki Corolla 2015**. En nuestro inventario la marca Suzuki solo cuenta con repuestos para el modelo **Swift**. Si necesita un repuesto para un Suzuki Swift, por favor indíquelo y con gusto le busco las opciones."
+      "duracion_s": 21.3,
+      "respuesta": "No tengo información suficiente: el modelo **Suzuki Corolla 2015** no está registrado en nuestro inventario. Si necesita repuestos para otro modelo de Suzuki (por ejemplo, Swift) o para otra marca, indíquelo y lo busco."
     },
     {
       "id": "C07",
@@ -194,7 +192,7 @@
       "session": "eval-C07",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:33:03",
+      "fecha": "2026-10-22T15:08:19",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Alerta explicita de stock critico, exigida por el encargo (Fase 4).",
@@ -204,15 +202,15 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4698,
-        "completion": 223,
-        "total": 4921
+        "prompt": 6330,
+        "completion": 256,
+        "total": 6586
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 24.7,
-      "respuesta": "Para tu Hyundai Accent 2016 encontré el siguiente alternador:\n\n[ALT-02] Alternador 12V 110A - $329 990 - Stock: 4 unidades (STOCK BAJO).\n\n¿Te gustaría que lo cotice o necesitas información adicional?"
+      "duracion_s": 11.3,
+      "respuesta": "Para tu Hyundai Accent 2016 tengo disponible:\n\n- **[ALT-02] Alternador 12 V 110 A** - $329 990 - Stock: **4 unidades** *(STOCK BAJO)*  \n\n¿Te gustaría que te envíe una cotización o proceder con la compra?"
     },
     {
       "id": "C08",
@@ -224,7 +222,7 @@
       "session": "eval-C08",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:33:20",
+      "fecha": "2026-10-22T15:08:42",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Se mantiene en el rol y redirige al tema (IE5/IE6).",
@@ -232,14 +230,14 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 2280,
-        "completion": 74,
-        "total": 2354
+        "prompt": 3096,
+        "completion": 73,
+        "total": 3169
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 5.8,
+      "duracion_s": 7.3,
       "respuesta": "Lo siento, pero solo puedo ayudar con repuestos automotrices y consultas relacionadas con vehículos. Si tienes alguna pregunta sobre tu auto o necesitas información de repuestos, estaré encantado de asistirte."
     },
     {
@@ -252,7 +250,7 @@
       "session": "eval-C09",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:33:53",
+      "fecha": "2026-10-22T15:09:33",
       "aprobado": true,
       "detalles": [],
       "justificacion": "RAG sobre manuales con cita de la fuente (IE1/IE2).",
@@ -262,15 +260,15 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 5024,
-        "completion": 227,
-        "total": 5251
+        "prompt": 6658,
+        "completion": 213,
+        "total": 6871
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 20.9,
-      "respuesta": "Según el manual técnico, el alternador de 12 V tiene una **corriente nominal de 90 A**【manual_alternador.pdf - página 1】."
+      "duracion_s": 36.4,
+      "respuesta": "Según el manual técnico, el alternador de 12 V tiene una **corriente nominal de 90 A**【manual_alternador.pdf - pagina 1】."
     },
     {
       "id": "C10",
@@ -282,7 +280,7 @@
       "session": "eval-C10",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:34:06",
+      "fecha": "2026-10-22T15:09:59",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Cruza el repuesto con el vehiculo usando la fuente interna.",
@@ -292,14 +290,14 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4689,
-        "completion": 188,
-        "total": 4877
+        "prompt": 6321,
+        "completion": 229,
+        "total": 6550
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 1.1,
+      "duracion_s": 10.6,
       "respuesta": "Sí, el kit de embrague **EMP-02** es compatible con tu Kia Rio 4 2018.\n\n[EMP-02] Kit embrague 215 mm - $249 990 - Stock: 9 unidades."
     },
     {
@@ -312,7 +310,7 @@
       "session": "eval-C11",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:34:20",
+      "fecha": "2026-10-22T15:10:25",
       "aprobado": true,
       "detalles": [],
       "justificacion": "El guardrail post-LLM marca el codigo que no existe en el CSV.",
@@ -322,15 +320,15 @@
       ],
       "used_llm": true,
       "tokens": {
-        "prompt": 2284,
-        "completion": 370,
-        "total": 2654
+        "prompt": 3100,
+        "completion": 363,
+        "total": 3463
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 2.0,
-      "respuesta": "No tengo información suficiente para confirmar la disponibilidad del repuesto **XYZ-99 (no verificado)**. Necesito que me indiques la marca, modelo y año del vehículo para poder buscarlo en nuestro inventario.\n\n[Guardrail] No puedo confirmar el repuesto XYZ-99: no existe en el inventario de la tienda."
+      "duracion_s": 11.2,
+      "respuesta": "No tengo información suficiente para responder. Necesito saber la marca, modelo y año del vehículo para poder verificar si el repuesto **XYZ-99 (no verificado)** está disponible en nuestro inventario.\n\n[Guardrail] No puedo confirmar el repuesto XYZ-99: no existe en el inventario de la tienda."
     },
     {
       "id": "C12",
@@ -342,7 +340,7 @@
       "session": "eval-C12",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:34:34",
+      "fecha": "2026-10-22T15:10:42",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Tool de ESCRITURA real: genera data/exports/cotizacion_*.json.",
@@ -352,15 +350,15 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4663,
-        "completion": 381,
-        "total": 5044
+        "prompt": 7842,
+        "completion": 134,
+        "total": 7976
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 1.7,
-      "respuesta": "¡Cotización realizada!  \nSe ha guardado en **C:\\Users\\pc\\Desktop\\sas\\EvaluaciónIA1\\data\\exports\\cotizacion_20261021_203433.json** con los dos ítems y un total de **$297.980**.\n\n¿Deseas que te la envíe por correo? Si es así, indícame la dirección de email."
+      "duracion_s": 1.8,
+      "respuesta": "Cotización generada correctamente. Si deseas que te la envíe por correo, por favor indícame la dirección de email."
     },
     {
       "id": "C13",
@@ -372,7 +370,7 @@
       "session": "eval-memoria",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:34:55",
+      "fecha": "2026-10-22T15:10:59",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Escritura en memoria de LARGO PLAZO (IE3/IE4).",
@@ -382,14 +380,14 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4638,
-        "completion": 155,
-        "total": 4793
+        "prompt": 6269,
+        "completion": 129,
+        "total": 6398
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 8.6,
+      "duracion_s": 2.4,
       "respuesta": "¡Listo! He guardado que tu auto es un **Suzuki Swift 2015**. Si necesitas repuestos o información, solo avísame."
     },
     {
@@ -402,7 +400,7 @@
       "session": "eval-memoria-2",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:35:30",
+      "fecha": "2026-10-22T15:11:29",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Recuperacion de contexto entre sesiones: memoria persistente (IE3/IE4).",
@@ -412,15 +410,15 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4631,
-        "completion": 213,
-        "total": 4844
+        "prompt": 6263,
+        "completion": 151,
+        "total": 6414
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 23.7,
-      "respuesta": "Sí, recuerdo que tu vehículo es un **Suzuki Swift 2015**. ¿En qué puedo ayudarte con los repuestos para ese modelo?"
+      "duracion_s": 15.2,
+      "respuesta": "Sí, recuerdo que tu vehículo es un **Suzuki Swift 2015**."
     },
     {
       "id": "C15",
@@ -432,7 +430,7 @@
       "session": "eval-C15",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:35:48",
+      "fecha": "2026-10-22T15:11:45",
       "aprobado": true,
       "detalles": [],
       "justificacion": "Respuesta cortes sin llamar herramientas ni inventar datos.",
@@ -440,14 +438,14 @@
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 2291,
-        "completion": 56,
-        "total": 2347
+        "prompt": 3107,
+        "completion": 82,
+        "total": 3189
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 5.7,
+      "duracion_s": 0.9,
       "respuesta": "¡Hola! Muy bien, gracias. ¿En qué puedo ayudarte con los repuestos para tu vehículo?"
     },
     {
@@ -460,25 +458,85 @@
       "session": "eval-C16",
       "proveedor": "groq",
       "modelo": "openai/gpt-oss-120b",
-      "fecha": "2026-10-21T20:36:26",
+      "fecha": "2026-10-22T15:12:03",
       "aprobado": true,
       "detalles": [],
-      "justificacion": "Tool de ENVIO: arma el correo con los precios del CSV y deja la cotización en data/exports/ (modo dry-run por defecto: no sale a internet).",
+      "justificacion": "Tool de ENVIO: arma el correo con los precios del inventario y lo manda por SMTP real (modo por defecto); deja la cotización en data/exports/ y el envío registrado en envios.jsonl. Sin credenciales SMTP el correo queda preparado en un .eml y la tool lo dice.",
       "herramientas": [
         "enviar_cotizacion_email"
       ],
       "guardrails": [],
       "used_llm": true,
       "tokens": {
-        "prompt": 4728,
-        "completion": 176,
-        "total": 4904
+        "prompt": 6382,
+        "completion": 335,
+        "total": 6717
       },
       "reintentos": 0,
       "rate_limited": false,
       "limite_diario": false,
-      "duracion_s": 25.4,
-      "respuesta": "Cotización enviada a **juan.perez@ejemplo.com**: 1 artículo (ALT-01) por $289.990."
+      "duracion_s": 2.3,
+      "respuesta": "Cotización preparada, **no se envió**: la cotización con el código **ALT-01** quedó guardada en  \n`C:\\Users\\matia\\OneDrive\\Escritorio\\Agente\\EvaluacionIA1\\data\\exports\\cotizacion_20261022_151202.eml` (modo dry-run). Contiene 1 ítem por **$289.990**.  \n\nQuedo a disposición para enviarla cuando lo desee."
+    },
+    {
+      "id": "C17",
+      "tipo": "venta",
+      "descripcion": "El cliente confirma la compra: se registra la venta y baja el stock",
+      "entradas": [
+        "Confirmo la compra del ALT-02, llévalo"
+      ],
+      "session": "eval-C17",
+      "proveedor": "groq",
+      "modelo": "openai/gpt-oss-120b",
+      "fecha": "2026-10-22T15:12:28",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Tool de ESCRITURA en la base de datos interna: la venta descuenta el stock real (ALT-02 pasa de 4 a 3) y devuelve la referencia de la venta. El evaluador comprueba el stock antes y despues en la BD.",
+      "herramientas": [
+        "registrar_venta"
+      ],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 6333,
+        "completion": 351,
+        "total": 6684
+      },
+      "reintentos": 0,
+      "rate_limited": false,
+      "limite_diario": false,
+      "duracion_s": 9.8,
+      "respuesta": "¡Listo! La compra quedó registrada:\n\n- **Referencia:** V-0001  \n- **Código:** ALT-02  \n- **Total:** $329.990  \n\nEl stock del artículo pasó a **3 unidades** (STOCK BAJO, quedan menos de 5).  \n\n¡Gracias por tu compra! 🚗💨"
+    },
+    {
+      "id": "C18",
+      "tipo": "recomendacion",
+      "descripcion": "El cliente pide una recomendacion: la tool cruza inventario, compatibilidad y manual",
+      "entradas": [
+        "¿Qué repuesto me recomiendas para un Suzuki Swift 2015?"
+      ],
+      "session": "eval-C18",
+      "proveedor": "groq",
+      "modelo": "openai/gpt-oss-120b",
+      "fecha": "2026-10-22T15:12:45",
+      "aprobado": true,
+      "detalles": [],
+      "justificacion": "Tool de RECOMENDACION: pipeline completo del encargo (RAG interno + RAG externo + compatibilidad) con el codigo del repuesto y la cita de la fuente (IE1/IE2/IE4).",
+      "herramientas": [
+        "recomendar_repuesto"
+      ],
+      "guardrails": [],
+      "used_llm": true,
+      "tokens": {
+        "prompt": 6484,
+        "completion": 244,
+        "total": 6728
+      },
+      "reintentos": 0,
+      "rate_limited": false,
+      "limite_diario": false,
+      "duracion_s": 2.8,
+      "respuesta": "Para tu Suzuki Swift 2015 te recomiendo el siguiente repuesto:\n\n[ALT-01] Alternador 12 V 90 A - $289.990 - Stock: 7 unidades.\n\nEs compatible con tu modelo (verificado en el manual técnico).  \n\n¿Te gustaría que te envíe una cotización o deseas más información sobre este alternador?"
     }
   ]
 }

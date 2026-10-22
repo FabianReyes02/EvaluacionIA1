@@ -36,7 +36,9 @@ from tools.inventory_lookup import ROOT
 
 load_dotenv()
 
-EXPORT_DIR = ROOT / "data" / "exports"
+# Los tests/evals apuntan EXPORTS_DIR a una carpeta temporal para no mezclar
+# sus envios con la evidencia real de data/exports/.
+EXPORT_DIR = Path(os.getenv("EXPORTS_DIR") or (ROOT / "data" / "exports"))
 ENVIO_LOG = EXPORT_DIR / "envios.jsonl"
 
 # Validacion basica de direccion (suficiente para el prototipo y para el LLM).
@@ -64,7 +66,9 @@ def get_email_config() -> dict:
         modo_pedido = "smtp"
 
     user = (os.getenv("SMTP_USER") or "").strip()
-    password = os.getenv("SMTP_PASSWORD") or ""
+    # Google muestra la contrasena de aplicacion con espacios ("abcd efgh ..."):
+    # cualquier espacio colado hace fallar el login con 535.
+    password = (os.getenv("SMTP_PASSWORD") or "").strip()
     tiene_credenciales = bool(user and password)
 
     if modo_pedido == "auto":

@@ -55,7 +55,7 @@ def _check_data_files() -> bool:
 
 def _check_llm(provider: str) -> bool:
     cfg = LLM_CONFIG[provider]
-    key = os.getenv(cfg["key_env"], "")
+    key = (os.getenv(cfg["key_env"]) or "").strip()
     model = os.getenv(cfg["model_env"], cfg["model_default"])
     print(f"{cfg['key_env']} configurada: {bool(key)} (empieza con {key[:3] if key else '?'})")
     print(f"{cfg['model_env']}={model}")
@@ -87,7 +87,7 @@ def _check_llm(provider: str) -> bool:
 def _check_tool_calling(provider: str) -> bool:
     """El agente necesita un modelo que emita tool_calls: lo verifica en vivo."""
     cfg = LLM_CONFIG[provider]
-    key = os.getenv(cfg["key_env"], "")
+    key = (os.getenv(cfg["key_env"]) or "").strip()
     if not key:
         return False
     model = os.getenv(cfg["model_env"], cfg["model_default"])

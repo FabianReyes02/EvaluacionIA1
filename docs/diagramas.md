@@ -97,7 +97,7 @@ sequenceDiagram
         E->>S: SMTP con TLS + login
         S-->>E: aceptado
         E-->>A: "Cotización ENVIADA a juan@ejemplo.com"
-    else modo dry (por defecto)
+    else modo dry (sin credenciales o EMAIL_MODE=dry)
         E->>E: guarda data/exports/cotizacion_*.eml
         E-->>A: "Cotización PREPARADA, NO se envió"
     end
@@ -106,6 +106,8 @@ sequenceDiagram
 ```
 
 Reglas del flujo: el cuerpo del correo se arma con los precios del CSV (nunca
-con lo que dice el modelo), sin credenciales no sale nada a internet (queda el
-`.eml`), y la respuesta al cliente reproduce lo que la tool devolvió realmente.
+con lo que dice el modelo), el transporte por defecto es SMTP real
+(`EMAIL_MODE="smtp"`), y solo si faltan credenciales o se pide `dry` no sale
+nada a internet (queda el `.eml`). La respuesta al cliente reproduce lo que la
+tool devolvió realmente.
 

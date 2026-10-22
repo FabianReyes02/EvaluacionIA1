@@ -7,6 +7,7 @@ razonar sobre el resultado.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -31,7 +32,7 @@ from tools.inventory_lookup import (
     stock_status,
 )
 
-EXPORT_DIR = ROOT / "data" / "exports"
+EXPORT_DIR = Path(os.getenv("EXPORTS_DIR") or (ROOT / "data" / "exports"))
 
 _inventory_cache: list[dict] | None = None
 
@@ -547,6 +548,10 @@ def recomendar_repuesto(marca: str, modelo: str, anio: str, tipo_repuesto: str =
     el inventario (precio y stock REAL), la compatibilidad registrada para el
     vehiculo y las especificaciones de los manuales tecnicos, y devuelve el
     codigo recomendado con la cita de la fuente.
+
+    ``tipo_repuesto`` es OPCIONAL: si el cliente no dijo que pieza necesita, no
+    se lo preguntes antes de llamar; llama la herramienta solo con marca,
+    modelo y anio y ella devuelve todas las opciones compatibles.
 
     Si no hay respaldo en el inventario ni en los manuales, lo dice: nunca
     improvisa una recomendacion. Si el stock es bajo o esta agotado, avisa.
