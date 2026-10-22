@@ -15,6 +15,9 @@ import socketserver
 import sys
 import tempfile
 import threading
+from email import policy
+from email.parser import BytesParser
+from io import BytesIO
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -29,10 +32,13 @@ os.environ["TIENDA_DB_PATH"] = str(TMP / "tienda_test.db")
 os.environ["EXPORTS_DIR"] = str(TMP / "exports")
 os.environ["EMAIL_MODE"] = "dry"
 
+from pypdf import PdfReader  # noqa: E402
+
 from agent import tools as agent_tools  # noqa: E402
 from tools import db  # noqa: E402
 from tools import email_sender  # noqa: E402
 from tools import inventory_lookup as inv  # noqa: E402
+from tools import pdf_cotizacion  # noqa: E402
 
 
 def _limpiar_estado():
@@ -290,3 +296,107 @@ def test_una_direccion_invalida_no_se_envia():
     ok, motivo = email_sender.validar_email("no-es-un-correo")
     assert ok is False
     assert "valida" in motivo
+
+
+# --------------------------------------------------------------------------
+# Documento PDF de la cotizacion
+# --------------------------------------------------------------------------
+def _documento_cotizacion(items=None, **extra):
+    if not items:
+        items = [
+            {
+                "codigo": "ALT-01",
+                "descripcion": "Alternador 12V 90A",
+                "precio": 289990,
+                "stock": 7,
+                "stock_status": "ok",
+            },
+            {
+                "codigo": "FLT-01",
+                "descripcion": "Filtro de aceite",
+                "precio": 7990,
+                "stock": 40,
+                "stock_status": "ok",
+            },
+        ]
+    documento = {
+        "fecha": "2026-10-22T15:26:20",
+        "cliente": "Matías Núñez",
+        "vehiculo": "Suzuki Swift 2015",
+        "items": items,
+        "total": sum(i["precio"] * int(i.get("cantidad") or 1) for i in items),
+        "avisos": [],
+    }
+    documento.update(extra)
+    return documento
+
+
+def test_el_pdf_de_la_cotizacion_es_valido_y_legible():
+    pdf = pdf_cotizacion.generar_pdf(_documento_cotizacion())
+    assert pdf.startswith(b"%PDF-")
+
+    texto = PdfReader(BytesIO(pdf)).pages[0].extract_text()
+    assert "REPUESTOS SUR" in texto
+    assert "ALT-01" in texto
+    assert "289.990" in texto
+    assert "TOTAL" in texto
+    assert "297.980" in texto
+    # WinAnsi: las tildes y la enie tienen que sobrevivir al PDF
+    assert "Matías Núñez" in texto
+
+
+def test_el_pdf_pagina_los_documentos_largos():
+    items = [
+        {
+            "codigo": f"REP-{i:02d}",
+            "descripcion": f"Repuesto de prueba numero {i}",
+            "precio": 10000 + i,
+            "stock": 10,
+            "stock_status": "ok",
+        }
+        for i in range(1, 41)
+    ]
+    pdf = pdf_cotizacion.generar_pdf(_documento_cotizacion(items))
+    lector = PdfReader(BytesIO(pdf))
+    assert len(lector.pages) >= 2
+    # La continuacion repite la cabecera de la tabla
+    assert "Codigo" in lector.pages[1].extract_text()
+
+
+def test_exportar_cotizacion_deja_pdf_y_json(monkeypatch):
+    monkeypatch.setenv("EMAIL_DOMAINS_ALLOWLIST", "")
+    respuesta = agent_tools.exportar_cotizacion.invoke(
+        {"codigos": ["ALT-01", "FLT-01"], "cliente": "Ana"}
+    )
+    assert ".pdf" in respuesta
+
+    pdfs = sorted((TMP / "exports").glob("cotizacion_*.pdf"))
+    jsons = sorted((TMP / "exports").glob("cotizacion_*.json"))
+    assert pdfs, "no se genero el PDF de la cotizacion"
+    assert jsons, "no se genero la copia JSON de la cotizacion"
+    assert pdfs[-1].stem == jsons[-1].stem
+    assert pdfs[-1].read_bytes().startswith(b"%PDF-")
+
+
+def test_el_correo_adjunta_la_cotizacion_en_pdf(monkeypatch):
+    monkeypatch.setenv("EMAIL_MODE", "dry")
+    monkeypatch.setenv("EMAIL_DOMAINS_ALLOWLIST", "")
+    respuesta = agent_tools.enviar_cotizacion_email.invoke(
+        {
+            "codigos": ["ALT-01"],
+            "email_cliente": "cliente@ejemplo.com",
+            "cliente": "Ana",
+            "vehiculo": "Suzuki Swift 2015",
+        }
+    )
+    assert "PREPARADA" in respuesta
+
+    eml = sorted((TMP / "exports").glob("*.eml"))[-1]
+    mensaje = BytesParser(policy=policy.default).parsebytes(eml.read_bytes())
+    adjuntos = [p for p in mensaje.walk() if p.get_content_type() == "application/pdf"]
+    assert adjuntos, "el correo no lleva un PDF adjunto"
+    assert adjuntos[0].get_filename().endswith(".pdf")
+    assert adjuntos[0].get_payload(decode=True).startswith(b"%PDF-")
+
+    texto = mensaje.get_body(preferencelist=("plain",)).get_content()
+    assert "Se adjunta el documento en formato PDF" in texto

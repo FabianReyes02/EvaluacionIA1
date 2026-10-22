@@ -44,7 +44,7 @@ sequenceDiagram
     A-->>C: recomendado + precio + cita manual + codigo
     C->>A: coticemos ALT-01
     A->>E: exportar_cotizacion([ALT-01])
-    E-->>A: data/exports/cotizacion_*.json
+    E-->>A: data/exports/cotizacion_*.pdf (+ copia .json)
     A-->>C: total + ruta archivo
 ```
 
@@ -93,12 +93,13 @@ sequenceDiagram
     E->>CSV: relee precios y stock (fuente única)
     CSV-->>E: ALT-01 $289.990 stock 7
     E->>E: valida el correo + allowlist de dominios
+    E->>E: genera el PDF (cotización o comprobante) y lo adjunta
     alt EMAIL_MODE=smtp
-        E->>S: SMTP con TLS + login
+        E->>S: SMTP con TLS + login (cuerpo + PDF adjunto)
         S-->>E: aceptado
         E-->>A: "Cotización ENVIADA a juan@ejemplo.com"
     else modo dry (sin credenciales o EMAIL_MODE=dry)
-        E->>E: guarda data/exports/cotizacion_*.eml
+        E->>E: guarda data/exports/cotizacion_*.eml (con el PDF adjunto)
         E-->>A: "Cotización PREPARADA, NO se envió"
     end
     E->>E: registra el envío en data/exports/envios.jsonl
@@ -106,8 +107,9 @@ sequenceDiagram
 ```
 
 Reglas del flujo: el cuerpo del correo se arma con los precios del CSV (nunca
-con lo que dice el modelo), el transporte por defecto es SMTP real
-(`EMAIL_MODE="smtp"`), y solo si faltan credenciales o se pide `dry` no sale
-nada a internet (queda el `.eml`). La respuesta al cliente reproduce lo que la
-tool devolvió realmente.
+con lo que dice el modelo) y la cotización va adjunta en **PDF**
+(`tools/pdf_cotizacion.py`, sin dependencias). El transporte por defecto es
+SMTP real (`EMAIL_MODE="smtp"`), y solo si faltan credenciales o se pide `dry`
+no sale nada a internet (queda el `.eml`, también con el PDF). La respuesta al
+cliente reproduce lo que la tool devolvió realmente.
 

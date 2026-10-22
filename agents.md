@@ -40,6 +40,7 @@
 | D14 | Robustez del RAG y contrato de las tools | `agent/rag.py` **se repara solo**: si la consulta a ChromaDB falla por segmentos corruptos, reindexa la colección desde el origen (PDF/CSV) y reintenta una vez. Las tools devuelven un mensaje **inequívoco**: el filtro por tipo distingue match exacto de aproximado (`coincide_tipo()`) y lo dice ("no hay 'filtro de aceite' exacto; la más cercana es FLT-02") | Un RAG caído **falla en silencio**: el chat sigue respondiendo, pero sin evidencia el agente degradaba a "no tengo información suficiente" y perdía el caso de eval (C09). Y una tool ambigua hace que el modelo ignore el dato que sí tenía (C02: nunca citaba FLT-02) | Dejar que la tool devuelva un listado sin contexto, o que el RAG degrade sin avisar, o "arreglar" el prompt para tapar un bug de la tool |
 | D15 | Base de datos interna (stock real) | **`tools/db.py`**: SQLite de la stdlib (`data/internal/tienda.db`, gitignored) con tablas `repuestos`, `ventas`, `venta_items` y `movimientos_stock`. La BD es la **verdad del stock**; el CSV sigue siendo el catálogo y se re-sincroniza (columna `stock`) después de cada venta. `load_inventory()` devuelve el catálogo del CSV con el stock real de la BD | Cero dependencias nuevas (`sqlite3` es stdlib) y estado persistente real: las ventas bajan existencias de verdad y quedan auditadas. El CSV re-sincronizado evita que guardrails, tools, RAG y la web muestren stock viejo. `TIENDA_DB_PATH` aísla la BD (los evals usan una aparte) | Solo CSV (el stock no se descontaría de verdad), SQLAlchemy/Postgres (dependencia extra y servidor que instalar), o guardar el stock en el JSONL de memoria |
 | D16 | Herramientas de venta y recomendación | **`registrar_venta`** (tool de escritura: registra la venta, descuenta stock, re-sincroniza el CSV, reindexa el RAG y opcionalmente manda el comprobante) y **`recomendar_repuesto`** (pipeline completo del encargo: RAG interno + compatibilidad + RAG de manuales con cita de fuente). El **correo pasa a envío real por SMTP por defecto** (`EMAIL_MODE="smtp"`) | El encargo pide que el stock en stock crítico avise y que el agente sea útil de punta a punta; sin una tool de venta el stock nunca cambiaba y la alerta era decorativa. La recomendación evita que el modelo improvise: la tool devuelve el código con su fuente | Confiar en el prompt para que el modelo "baje el stock", o una tool que solo simule sin persistir |
+| D17 | Documento de la cotización | **`tools/pdf_cotizacion.py`**: generador propio con la stdlib (PDF 1.4, Helvetica/Helvetica-Bold base-14 con `WinAnsiEncoding`, tabla con paginado automático y pie de página). El PDF es lo que recibe el cliente (adjunto en el correo y artefacto de `exportar_cotizacion`); el JSON queda como **copia legible por máquina** para trazabilidad y pruebas | El correo adjuntaba el JSON crudo, que no es un documento presentable. Se descartaron `fpdf2` y `reportlab` porque arrastran **Pillow** y otras extensiones binarias: el Control de aplicaciones de la máquina de desarrollo ya bloqueó el `.pyd` de `tiktoken` (D11). El generador propio pesa ~4 KB por documento, no suma dependencias y se valida con `pypdf` (ya presente por el loader de manuales) | `fpdf2`/`reportlab` (dependencias binarias), HTML→PDF con navegador (frágil y no reproducible), o seguir mandando el JSON |
 
 Convencion de commits: mensajes simples y en espanol durante todo el semestre.
 
@@ -91,6 +92,7 @@ EvaluacionIA1/
 ├── tools/
 │   ├── inventory_lookup.py         ✓ búsqueda y diagnóstico sobre inventory.csv
 │   ├── db.py                       ✓ BD interna SQLite: stock real, ventas y movimientos (D15)
+│   ├── pdf_cotizacion.py           ✓ PDF de cotización/comprobante sin dependencias (D17)
 │   └── email_sender.py             ✓ armado y envío del correo (SMTP stdlib, real por defecto, dry opcional)
 ├── web/
 │   ├── server.py                   ✓ servidor HTTP + API JSON
@@ -364,6 +366,29 @@ EvaluacionIA1/
   modo `EMAIL_MODE="dry"`. La corrida de 16/16 quedó archivada como
   `eval_reporte_16casos_2026-10-21.{md,json}` y se agregó
   `data/internal/*_eval.csv` al `.gitignore` (lo genera el runner).
+- **2026-10-22 (cuarta tanda) — la cotización viaja en PDF (D17).** El correo
+  adjuntaba el `.json` crudo, que no es un documento presentable al cliente. Se
+  agregó `tools/pdf_cotizacion.py`: un generador PDF 1.4 escrito sobre la
+  stdlib (Helvetica/Helvetica-Bold base-14 con `WinAnsiEncoding`, tabla de
+  ítems con paginado automático, total, avisos de stock y pie con numeración).
+  Descarté `fpdf2`/`reportlab` porque arrastran Pillow y otras extensiones
+  binarias —el Control de aplicaciones de esta máquina ya bloqueó el `.pyd` de
+  `tiktoken` (D11)— y el documento es una tabla de texto simple. Cambios:
+  1. `_guardar_cotizacion()` devuelve `(json, pdf)` con el mismo nombre base
+     (`cotizacion_AAAAMMDD_HHMMSS.{pdf,json}`); el PDF es el documento del
+     cliente y el JSON la copia legible por máquina;
+  2. `exportar_cotizacion` informa la ruta del PDF;
+     `enviar_cotizacion_email` y el comprobante de `registrar_venta` adjuntan
+     el PDF (`application/pdf`, el tipo MIME sale de la extensión);
+  3. el cuerpo del correo (texto y HTML) avisa *"Se adjunta el documento en
+     formato PDF"*;
+  4. `tests/test_herramientas.py` pasa de 16 a **20 tests**: validez del PDF
+     con `pypdf` (incluye tildes y ñ), paginado con 40 ítems, par
+     PDF+JSON al exportar y adjunto `application/pdf` en el `.eml` del modo
+     dry. Los casos **C12 y C16 se re-validaron aislados** (2/2, 13 360
+     tokens, `EMAIL_MODE="dry"`); la suite completa de 18 no se repitió
+     porque al 120b le quedaban ~90 000 tokens TPD y una corrida pide ~100 000
+     (la evidencia 18/18 sigue válida: los criterios no cambiaron).
 
 ## 8. En progreso (actualizado 2026-10-22)
 
@@ -456,3 +481,10 @@ EvaluacionIA1/
      **otra organización** de Groq también funciona: tiene su propio cubo de
      200 000 TPD. Verificación rápida tras el cambio:
      `scripts/verify_env.py` + `GET /api/health` (campo `modelo`).
+  8. ✅ **Cotización en PDF (D17):** `tools/pdf_cotizacion.py` genera el
+     documento sin dependencias (PDF 1.4, fuentes base-14, paginado y pie) y
+     se adjunta al correo como `application/pdf`; el JSON queda como copia
+     para trazabilidad. `pytest` → **20/20** y C12/C16 re-validados en modo
+     `dry`. Hay dos muestras para revisar el diseño:
+     `data/exports/demo_cotizacion.pdf` y `data/exports/demo_comprobante.pdf`
+     (gitignored, se regeneran con el generador).

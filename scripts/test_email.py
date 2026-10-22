@@ -8,7 +8,7 @@ Uso::
     # 2) Envia una cotizacion real de prueba a tu propia casilla
     .\\.venv\\Scripts\\python.exe scripts\\test_email.py --enviar tu.cuenta@gmail.com
 
-    # 3) Fuerza el modo dry-run (deja el .eml en data/exports/, no sale a internet)
+    # 3) Fuerza el modo dry-run (deja el .eml con el PDF adjunto, no sale a internet)
     .\\.venv\\Scripts\\python.exe scripts\\test_email.py --dry
 
 Opciones: ``--codigo ALT-01`` elige el repuesto a cotizar.
@@ -36,6 +36,7 @@ from tools.email_sender import (  # noqa: E402
     validar_email,
 )
 from tools.inventory_lookup import find_by_code, load_inventory, stock_status  # noqa: E402
+from tools.pdf_cotizacion import generar_pdf  # noqa: E402
 
 
 def mostrar_config(cfg: dict) -> None:
@@ -112,6 +113,12 @@ def cotizacion_de_prueba(codigo: str) -> dict:
     }
 
 
+def adjunto_de_prueba(documento: dict) -> tuple[bytes, str]:
+    """PDF de la cotizacion, igual al que adjunta la tool (D17)."""
+    nombre = f"cotizacion_{datetime.now():%Y%m%d_%H%M%S}.pdf"
+    return generar_pdf(documento, vehiculo=documento.get("vehiculo") or ""), nombre
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prueba el correo del agente.")
     parser.add_argument("--enviar", metavar="DESTINO", help="Envia de verdad a esa direccion.")
@@ -130,9 +137,16 @@ def main() -> int:
 
     if args.dry:
         documento = cotizacion_de_prueba(args.codigo)
-        resultado = enviar_cotizacion_documento(documento, "prueba@ejemplo.com")
+        adjunto, nombre_adjunto = adjunto_de_prueba(documento)
+        resultado = enviar_cotizacion_documento(
+            documento,
+            "prueba@ejemplo.com",
+            vehiculo=documento["vehiculo"],
+            adjunto=adjunto,
+            nombre_adjunto=nombre_adjunto,
+        )
         print(f"\nResultado: {json.dumps(resultado, ensure_ascii=False, indent=2)}")
-        print("\n[OK] Modo dry-run: revisa el .eml en data/exports/.")
+        print("\n[OK] Modo dry-run: revisa el .eml (con el PDF adjunto) en data/exports/.")
         return 0
 
     if not args.enviar:
@@ -152,11 +166,14 @@ def main() -> int:
 
     print(f"\nEnviando cotizacion de {args.codigo} a {args.enviar} ...")
     documento = cotizacion_de_prueba(args.codigo)
+    adjunto, nombre_adjunto = adjunto_de_prueba(documento)
     resultado = enviar_cotizacion_documento(
         documento,
         args.enviar,
         vehiculo="Suzuki Swift 2015",
         mensaje="Prueba de envio del asistente de Repuestos Sur.",
+        adjunto=adjunto,
+        nombre_adjunto=nombre_adjunto,
     )
     print(json.dumps(resultado, ensure_ascii=False, indent=2))
 

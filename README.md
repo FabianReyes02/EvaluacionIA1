@@ -138,7 +138,7 @@ casos) queda archivada en `eval_reporte_15casos_qwen_2026-10-19.{md,json}`.
 ### 4. Pruebas de las herramientas (sin gastar tokens)
 
 ```bash
-python -m pytest tests/test_herramientas.py -v   # 16 tests: BD, ventas, stock y correo
+python -m pytest tests/test_herramientas.py -v   # 20 tests: BD, ventas, stock, PDF y correo
 python scripts/verify_env.py                     # LLM, tool-calling, agente, embeddings y Chroma
 ```
 
@@ -148,7 +148,7 @@ Para el correo, sin pasar por el LLM:
 python scripts/configurar_correo.py                 # guarda credenciales en .env (entrada oculta)
 python scripts/test_email.py                        # verifica config + login SMTP, NO envía
 python scripts/test_email.py --enviar tu@correo.com # envía una cotización real
-python scripts/test_email.py --dry                  # deja el .eml en data/exports/, no sale a internet
+python scripts/test_email.py --dry                  # deja el .eml con el PDF adjunto, no sale a internet
 ```
 
 ## 📁 Estructura
@@ -167,6 +167,7 @@ EvaluacionIA1/
 ├── tools/
 │   ├── inventory_lookup.py   Busqueda y diagnostico sobre el CSV
 │   ├── db.py                 Base interna SQLite: stock real, ventas y movimientos
+│   ├── pdf_cotizacion.py     Genera el PDF de cotizacion/comprobante (sin dependencias)
 │   └── email_sender.py       Armado y envio del correo (SMTP real, dry-run opcional)
 ├── ingestion/
 │   └── ingest.py         CLI de ingesta RAG
@@ -190,7 +191,7 @@ EvaluacionIA1/
 │   ├── internal/inventory.csv
 │   ├── external/manuales/*.pdf
 │   ├── memory/           Memoria persistente del agente (JSONL)
-│   └── exports/          Cotizaciones escritas por el agente (JSON, .eml, envios.jsonl)
+│   └── exports/          Cotizaciones del agente (PDF + copia JSON, .eml, envios.jsonl)
 ├── main.py               CLI interactiva
 ├── agents.md             Memoria de decisiones del equipo
 └── requirements.txt      Dependencias congeladas
@@ -216,8 +217,8 @@ EvaluacionIA1/
 | `verificar_compatibilidad` | consulta | Si un código sirve para un vehículo dado |
 | `recuperar_memoria` | consulta | Hechos recordados de sesiones anteriores |
 | `recordar_dato` | **escritura** | Persiste un dato del cliente en largo plazo |
-| `exportar_cotizacion` | **escritura** | Escribe un JSON en `data/exports/` |
-| `enviar_cotizacion_email` | **escritura** | Envía la cotización por correo (SMTP real) |
+| `exportar_cotizacion` | **escritura** | Escribe la cotización en **PDF** (y una copia JSON) en `data/exports/` |
+| `enviar_cotizacion_email` | **escritura** | Envía la cotización por correo con el **PDF adjunto** (SMTP real) |
 | `registrar_venta` | **escritura** | Registra la venta y **descuenta el stock** en la BD interna |
 | `recomendar_repuesto` | consulta | Recomienda el repuesto cruzando inventario, compatibilidad y manual |
 
@@ -258,8 +259,8 @@ falla informa el error.
 
 El agente pide la dirección del cliente si no se la dieron y luego llama
 `enviar_cotizacion_email`, que arma el cuerpo del correo **con los precios y el
-stock del CSV** (nunca con lo que dice el modelo), adjunta el JSON de la
-cotización y registra el envío en `data/exports/envios.jsonl`.
+stock del CSV** (nunca con lo que dice el modelo), adjunta la cotización en
+**PDF** y registra el envío en `data/exports/envios.jsonl`.
 
 Por defecto el envío es **real por SMTP** (`EMAIL_MODE="smtp"`): el correo sale
 a internet y queda registrado en `data/exports/envios.jsonl`. Si el servidor SMTP
@@ -297,7 +298,7 @@ SMTP_PASSWORD="<contraseña del panel>"
 ```
 
 > En modo `smtp` **no** se guarda copia `.eml` local (el `.eml` es el artefacto
-> del dry-run): quedan el JSON de la cotización y la traza en
+> del dry-run): quedan el PDF de la cotización (con su copia JSON) y la traza en
 > `data/exports/envios.jsonl`, con `modo: "smtp"` y `enviado: true` **solo**
 > si el servidor SMTP aceptó el mensaje.
 
@@ -348,7 +349,7 @@ Orquestación, flujos feliz/negativa y memoria en [`docs/diagramas.md`](docs/dia
 | `EMAIL_FROM` | Remitente con nombre visible (la dirección siempre es `SMTP_USER`) | `Repuestos Sur` |
 | `EMAIL_DOMAINS_ALLOWLIST` | Dominios permitidos para envío (vacío = todos) | — |
 | `INVENTORY_PATH` / `TIENDA_DB_PATH` | CSV del catálogo y BD SQLite del stock real (los tests y evals los aíslan) | `data/internal/inventory.csv` / `data/internal/tienda.db` |
-| `EXPORTS_DIR` | Carpeta de cotizaciones, `.eml` y `envios.jsonl` (los tests la aíslan) | `data/exports` |
+| `EXPORTS_DIR` | Carpeta de cotizaciones (PDF + JSON), `.eml` y `envios.jsonl` (los tests la aíslan) | `data/exports` |
 
 ## 📊 Resultado de las pruebas
 

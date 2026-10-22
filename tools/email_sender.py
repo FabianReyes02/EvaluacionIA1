@@ -16,8 +16,10 @@ Modo de operacion (variable ``EMAIL_MODE``):
 El modo por defecto es ``smtp``: el agente manda correos reales. Si faltan las
 credenciales, el modulo cae a ``dry`` en vez de fallar en caliente y lo dice
 explicitamente en el mensaje, de modo que la tool nunca afirme que envio algo
-que no salio. Cada envio (preparado o realizado) queda registrado en
-``data/exports/envios.jsonl`` para trazabilidad, igual que la traza del agente.
+que no salio. El adjunto es la cotizacion en **PDF** (la genera
+``tools/pdf_cotizacion.py``; este modulo solo la transporta). Cada envio
+(preparado o realizado) queda registrado en ``data/exports/envios.jsonl`` para
+trazabilidad, igual que la traza del agente.
 """
 from __future__ import annotations
 
@@ -171,7 +173,9 @@ def _tipo_documento(documento: dict) -> str:
     return "comprobante" if documento.get("tipo") == "comprobante" else "cotizacion"
 
 
-def construir_cuerpo_texto(documento: dict, vehiculo: str = "", mensaje: str = "") -> str:
+def construir_cuerpo_texto(
+    documento: dict, vehiculo: str = "", mensaje: str = "", adjunto_pdf: bool = False
+) -> str:
     """Cuerpo en texto plano de la cotizacion (visible sin HTML)."""
     cliente = documento.get("cliente") or "no indicado"
     es_comprobante = _tipo_documento(documento) == "comprobante"
@@ -201,6 +205,9 @@ def construir_cuerpo_texto(documento: dict, vehiculo: str = "", mensaje: str = "
     if mensaje:
         lineas += ["", mensaje.strip()]
 
+    if adjunto_pdf:
+        lineas += ["", "Se adjunta el documento en formato PDF."]
+
     lineas += [
         "",
         "--",
@@ -216,7 +223,9 @@ def construir_cuerpo_texto(documento: dict, vehiculo: str = "", mensaje: str = "
     return "\n".join(lineas)
 
 
-def construir_cuerpo_html(documento: dict, vehiculo: str = "", mensaje: str = "") -> str:
+def construir_cuerpo_html(
+    documento: dict, vehiculo: str = "", mensaje: str = "", adjunto_pdf: bool = False
+) -> str:
     """Cuerpo HTML de la cotizacion (alternativa al texto plano)."""
     cliente = documento.get("cliente") or "no indicado"
     es_comprobante = _tipo_documento(documento) == "comprobante"
@@ -252,6 +261,11 @@ def construir_cuerpo_html(documento: dict, vehiculo: str = "", mensaje: str = ""
         else ""
     )
     bloque_mensaje = f"<p>{mensaje.strip()}</p>" if mensaje else ""
+    bloque_adjunto = (
+        "<p style='font-size:12px;color:#666'>Se adjunta el documento en formato PDF.</p>"
+        if adjunto_pdf
+        else ""
+    )
     bloque_vehiculo = f"<p><b>Vehiculo:</b> {vehiculo}</p>" if vehiculo else ""
     bloque_venta = (
         f"<p><b>Venta:</b> {documento.get('referencia', '')}</p>"
@@ -290,6 +304,7 @@ def construir_cuerpo_html(documento: dict, vehiculo: str = "", mensaje: str = ""
   </table>
   {bloque_avisos}
   {bloque_mensaje}
+  {bloque_adjunto}
   <hr style="border:none;border-top:1px solid #ddd">
   <p style="font-size:12px;color:#666">
     Repuestos Sur | Asistente de ventas<br>
@@ -337,11 +352,20 @@ def _armar_mensaje(
     msg["From"] = formataddr((nombre, addr))
     msg["To"] = destinatario
     msg["Reply-To"] = addr
-    msg.set_content(construir_cuerpo_texto(documento, vehiculo, mensaje))
-    msg.add_alternative(construir_cuerpo_html(documento, vehiculo, mensaje), subtype="html")
-    if adjunto and nombre_adjunto:
+    con_adjunto = bool(adjunto and nombre_adjunto)
+    msg.set_content(
+        construir_cuerpo_texto(documento, vehiculo, mensaje, adjunto_pdf=con_adjunto)
+    )
+    msg.add_alternative(
+        construir_cuerpo_html(documento, vehiculo, mensaje, adjunto_pdf=con_adjunto),
+        subtype="html",
+    )
+    if con_adjunto:
+        # El tipo MIME sale de la extension (hoy siempre .pdf): el cliente de
+        # correo necesita application/pdf para ofrecer vista previa.
+        extension = Path(nombre_adjunto).suffix.lstrip(".").lower() or "pdf"
         msg.add_attachment(
-            adjunto, maintype="application", subtype="json", filename=nombre_adjunto
+            adjunto, maintype="application", subtype=extension, filename=nombre_adjunto
         )
     return msg
 

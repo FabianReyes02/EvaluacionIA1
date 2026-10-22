@@ -31,6 +31,7 @@ from tools.inventory_lookup import (
     search_parts,
     stock_status,
 )
+from tools.pdf_cotizacion import guardar_pdf
 
 EXPORT_DIR = Path(os.getenv("EXPORTS_DIR") or (ROOT / "data" / "exports"))
 
@@ -251,13 +252,23 @@ def _construir_cotizacion(
     return documento, faltantes
 
 
-def _guardar_cotizacion(documento: dict) -> Path:
-    """Escribe el JSON de la cotizacion en data/exports/ y devuelve la ruta."""
+def _guardar_cotizacion(documento: dict, vehiculo: str = "") -> tuple[Path, Path]:
+    """Escribe la cotizacion en data/exports/ y devuelve (json, pdf).
+
+    El PDF es el documento que ve el cliente (y el que va adjunto al correo);
+    el JSON queda como copia legible por maquina para trazabilidad y pruebas.
+    """
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+    prefijo = "comprobante" if documento.get("tipo") == "comprobante" else "cotizacion"
     stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    path = EXPORT_DIR / f"cotizacion_{stamp}.json"
-    path.write_text(json.dumps(documento, ensure_ascii=False, indent=2), encoding="utf-8")
-    return path
+    json_path = EXPORT_DIR / f"{prefijo}_{stamp}.json"
+    json_path.write_text(json.dumps(documento, ensure_ascii=False, indent=2), encoding="utf-8")
+    pdf_path = guardar_pdf(
+        documento,
+        EXPORT_DIR / f"{prefijo}_{stamp}.pdf",
+        vehiculo=vehiculo or documento.get("vehiculo") or "",
+    )
+    return json_path, pdf_path
 
 
 @tool
@@ -265,9 +276,9 @@ def exportar_cotizacion(codigos: list[str], cliente: str = "") -> str:
     """Escribe en disco la cotizacion de los repuestos indicados (escritura real).
 
     ``codigos`` es la lista de codigos del inventario a cotizar (ej:
-    ['ALT-01', 'FLT-01']). Crea un archivo JSON en data/exports/ con fecha,
-    cliente, detalle y total. Usala SOLO cuando el cliente pida cotizar,
-    guardar o enviar la cotizacion.
+    ['ALT-01', 'FLT-01']). Crea un PDF en data/exports/ con fecha, cliente,
+    detalle y total (y una copia .json con los mismos datos). Usala SOLO cuando
+    el cliente pida cotizar, guardar o enviar la cotizacion.
     """
     documento, _ = _construir_cotizacion(codigos, cliente)
     if not documento["items"]:
@@ -276,11 +287,11 @@ def exportar_cotizacion(codigos: list[str], cliente: str = "") -> str:
             "No se exporto nada."
         )
 
-    path = _guardar_cotizacion(documento)
+    _, pdf_path = _guardar_cotizacion(documento)
     avisos = documento["avisos"]
     aviso = f" Avisos: {'; '.join(avisos)}." if avisos else ""
     return (
-        f"Cotizacion guardada en {path} con {len(documento['items'])} item(s) "
+        f"Cotizacion guardada en {pdf_path} con {len(documento['items'])} item(s) "
         f"por ${documento['total']}.{aviso}"
     )
 
@@ -301,9 +312,10 @@ def enviar_cotizacion_email(
     destino. ``vehiculo`` y ``mensaje`` son opcionales.
 
     El cuerpo del correo se arma con los precios y el stock del INVENTORIO,
-    nunca con lo que diga el modelo. Si el envio por SMTP no esta configurado,
-    la cotizacion queda PREPARADA en un archivo .eml y NO se sale a internet:
-    en ese caso informa que quedo preparada, jamas que fue enviada.
+    nunca con lo que diga el modelo, y la cotizacion va adjunta en **PDF**.
+    Si el envio por SMTP no esta configurado, la cotizacion queda PREPARADA en
+    un archivo .eml y NO se sale a internet: en ese caso informa que quedo
+    preparada, jamas que fue enviada.
 
     Si el cliente no dio su direccion de correo, NO la inventes ni la deduzcas:
     pidela primero y despues llama esta herramienta.
@@ -323,14 +335,14 @@ def enviar_cotizacion_email(
             "No se envio nada."
         )
 
-    path = _guardar_cotizacion(documento)
+    _, pdf_path = _guardar_cotizacion(documento, vehiculo)
     resultado = enviar_cotizacion_documento(
         documento,
         email_cliente.strip(),
         vehiculo=vehiculo,
         mensaje=mensaje,
-        adjunto=path.read_bytes(),
-        nombre_adjunto=path.name,
+        adjunto=pdf_path.read_bytes(),
+        nombre_adjunto=pdf_path.name,
     )
 
     items = len(documento["items"])
@@ -341,17 +353,17 @@ def enviar_cotizacion_email(
     if resultado["enviado"]:
         return (
             f"Cotizacion ENVIADA a {email_cliente.strip()} con {items} item(s) "
-            f"por ${total}.{detalle_avisos} (Copia de la cotizacion en {path})"
+            f"por ${total}, adjunta en PDF.{detalle_avisos} (Copia en {pdf_path})"
         )
     if resultado["ruta"]:
         return (
             f"Cotizacion PREPARADA, NO se envio: {resultado['detalle']} "
-            f"Contiene {items} item(s) por ${total}.{detalle_avisos} "
+            f"Contiene {items} item(s) por ${total} en PDF.{detalle_avisos} "
             "Informa al cliente que quedo lista y pendiente de envio."
         )
     return (
         f"No pude enviar la cotizacion a {email_cliente.strip()}: "
-        f"{resultado['detalle']} La cotizacion quedo guardada en {path}."
+        f"{resultado['detalle']} La cotizacion quedo guardada en {pdf_path}."
         f"{detalle_avisos}"
     )
 
@@ -501,17 +513,20 @@ def registrar_venta(
                 if int(d["stock_despues"]) < 5
             ],
         }
-        path = _guardar_cotizacion(documento)
+        _, pdf_path = _guardar_cotizacion(documento, vehiculo)
         resultado = enviar_cotizacion_documento(
             documento,
             email_cliente.strip(),
             vehiculo=vehiculo,
             mensaje=f"Comprobante de la venta {venta['referencia']}.",
-            adjunto=path.read_bytes(),
-            nombre_adjunto=path.name,
+            adjunto=pdf_path.read_bytes(),
+            nombre_adjunto=pdf_path.name,
         )
         if resultado["enviado"]:
-            return f"{mensaje}\nComprobante ENVIADO a {email_cliente.strip()}."
+            return (
+                f"{mensaje}\nComprobante ENVIADO a {email_cliente.strip()} "
+                "(adjunto en PDF)."
+            )
         if resultado["ruta"]:
             return (
                 f"{mensaje}\nComprobante PREPARADO, NO se envio ({resultado['detalle']}). "
@@ -519,7 +534,7 @@ def registrar_venta(
             )
         return (
             f"{mensaje}\nNo pude enviar el comprobante: {resultado['detalle']} "
-            f"Quedo guardado en {path}."
+            f"Quedo guardado en {pdf_path}."
         )
 
     return mensaje

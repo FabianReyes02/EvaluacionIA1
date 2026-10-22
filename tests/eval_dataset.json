@@ -141,7 +141,7 @@
         "genera_archivo": true,
         "no_codigos_inventados": true
       },
-      "justificacion": "Tool de ESCRITURA real: genera data/exports/cotizacion_*.json."
+      "justificacion": "Tool de ESCRITURA real: genera data/exports/cotizacion_*.pdf (con copia .json) para el cliente."
     },
     {
       "id": "C13",
@@ -188,7 +188,7 @@
         "genera_archivo": true,
         "no_codigos_inventados": true
       },
-      "justificacion": "Tool de ENVIO: arma el correo con los precios del inventario y lo manda por SMTP real (modo por defecto); deja la cotización en data/exports/ y el envío registrado en envios.jsonl. Sin credenciales SMTP el correo queda preparado en un .eml y la tool lo dice."
+      "justificacion": "Tool de ENVIO: arma el correo con los precios del inventario y lo manda por SMTP real (modo por defecto) con la cotización adjunta en PDF; deja la cotización en data/exports/ y el envío registrado en envios.jsonl. Sin credenciales SMTP el correo queda preparado en un .eml y la tool lo dice."
     },
     {
       "id": "C17",

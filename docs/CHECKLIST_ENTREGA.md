@@ -51,6 +51,11 @@ Comportamiento esperado:
   solo es `enviado: true` si el servidor SMTP aceptó el mensaje.
 - **`EMAIL_MODE="dry"`** (o sin credenciales): no sale nada a internet; queda el
   `.eml` en `data/exports/` y la tool responde *"preparada, NO se envió"*.
+- **La cotización va adjunta en PDF** (`tools/pdf_cotizacion.py`, sin
+  dependencias nuevas): `application/pdf`, con fecha, cliente, vehículo, tabla
+  de ítems, total y avisos de stock. Se guarda también una copia `.json` con
+  los mismos datos para trazabilidad. El comprobante de venta usa el mismo
+  generador con la referencia `V-0001`.
 - Cada envío queda registrado en `data/exports/envios.jsonl` (tipo,
   destinatario, modo, enviado y detalle).
 - `EMAIL_DOMAINS_ALLOWLIST` restringe los dominios de destino (vacío = todos).
@@ -116,7 +121,7 @@ Mailtrap. Para no mandar correos durante los evals:
 - Datos simulados (`generate_sample_data.py`), no tienda real.
 - El envío de correo está verificado **en los dos modos**: `smtp` (default, envío
   real con `modo: "smtp"` y `enviado: true` en `data/exports/envios.jsonl`) y
-  `dry-run` (deja el `.eml` en `data/exports/`). La corrida de evidencia del
-  2026-10-21 se hizo en modo `smtp` (destino: sandbox de Mailtrap, que retiene
-  los mensajes y no los entrega a nadie); el 2026-10-22 se validó además con
-  **Gmail real** y contraseña de aplicación.
+  `dry-run` (deja el `.eml` con el PDF adjunto en `data/exports/`). La corrida
+  de evidencia del 2026-10-21 se hizo en modo `smtp` (destino: sandbox de
+  Mailtrap, que retiene los mensajes y no los entrega a nadie); el 2026-10-22 se
+  validó además con **Gmail real** y contraseña de aplicación.
