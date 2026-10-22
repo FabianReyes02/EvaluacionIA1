@@ -446,3 +446,13 @@ EvaluacionIA1/
   6. Los tests ya no contaminan la evidencia: `tests/test_herramientas.py` apunta
      `EXPORTS_DIR` a una carpeta temporal (antes escribía en el
      `data/exports/envios.jsonl` real).
+  7. ⚠️ **Cambio de modelo mientras la cuota de qwen está agotada:** el `.env`
+     local quedó con `GROQ_MODEL="openai/gpt-oss-120b"` porque el TPD de
+     `qwen/qwen3.8-27b` (modelo de D8) llegó a 197 267/200 000 el 2026-10-22.
+     Como los límites son **por organización y por modelo**, el 120b siguió
+     operativo con la misma key (es el mismo modelo de la evidencia 18/18).
+     Para volver a qwen alcanza con reponer `GROQ_MODEL="qwen/qwen3.8-27b"` en
+     `.env` y reiniciar el servidor (la config se lee al arrancar). Una key de
+     **otra organización** de Groq también funciona: tiene su propio cubo de
+     200 000 TPD. Verificación rápida tras el cambio:
+     `scripts/verify_env.py` + `GET /api/health` (campo `modelo`).
