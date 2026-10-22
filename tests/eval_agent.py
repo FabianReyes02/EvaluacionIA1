@@ -29,6 +29,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import sys
 import time
 from datetime import datetime
@@ -43,6 +44,16 @@ sys.path.insert(0, str(ROOT_DIR))
 EVAL_MEMORY_FILE = ROOT_DIR / "data" / "memory" / "memoria_eval.jsonl"
 os.environ["MEMORIA_FILE"] = str(EVAL_MEMORY_FILE)
 os.environ["MEMORIA_COLLECTION"] = "memoria_eval"
+
+# Inventario y base de datos AISLADOS: los evals register_venta bajan stock
+# de verdad, asi que corren contra una copia del CSV y una BD aparte. El
+# inventario real de la tienda no se toca en una corrida de pruebas.
+EVAL_CSV = ROOT_DIR / "data" / "internal" / "inventory_eval.csv"
+EVAL_DB = ROOT_DIR / "data" / "internal" / "tienda_eval.db"
+INVENTARIO_REAL = ROOT_DIR / "data" / "internal" / "inventory.csv"
+shutil.copyfile(INVENTARIO_REAL, EVAL_CSV)
+os.environ["INVENTORY_PATH"] = str(EVAL_CSV)
+os.environ["TIENDA_DB_PATH"] = str(EVAL_DB)
 
 from agent.agent import run  # noqa: E402
 from agent.guardrails import extract_codes  # noqa: E402
@@ -77,6 +88,16 @@ def limpiar_memoria_eval() -> None:
         get_client().delete_collection("memoria_eval")
     except Exception:
         pass  # si la coleccion no existe, no hay nada que borrar
+
+
+def _stock_actual() -> dict:
+    """Stock real de la base de datos interna (codigo -> unidades)."""
+    try:
+        from tools.db import stock_por_codigo
+
+        return stock_por_codigo()
+    except Exception:
+        return {}
 
 
 def _norm(texto: str) -> str:
@@ -145,6 +166,19 @@ def evaluar(caso: dict, respuesta: str, resultado: dict, ctx: dict) -> tuple[boo
         detalles.append("no se creo ningun archivo en data/exports/")
     if esp.get("memoria_crece") and ctx["memoria_after"] <= ctx["memoria_before"]:
         detalles.append("la memoria de largo plazo no crecio")
+
+    # El stock de la BD interna tiene que bajar exactamente lo que se vendio.
+    for codigo, delta in (esp.get("stock_baja") or {}).items():
+        antes = ctx["stock_antes"].get(codigo)
+        despues = ctx["stock_despues"].get(codigo)
+        if antes is None or despues is None:
+            detalles.append(f"no se pudo leer el stock de {codigo} en la base de datos")
+            continue
+        if despues - antes != -abs(int(delta)):
+            detalles.append(
+                f"el stock de {codigo} no bajo {abs(int(delta))} "
+                f"(antes {antes}, despues {despues})"
+            )
 
     return (not detalles), detalles
 
@@ -262,6 +296,13 @@ def main() -> int:
     if ya_hechos:
         print(f"Reanudando: {len(ya_hechos)} caso(s) ya hechos en {parcial_path}")
 
+    # La BD de eval arranca desde cero: las ventas de los casos bajan el stock
+    # de verdad y no debe arrastrarse de una corrida a otra.
+    for sufijo in ("", "-wal", "-shm"):
+        ruta = Path(str(EVAL_DB) + sufijo)
+        if ruta.exists():
+            ruta.unlink()
+
     inventory = load_inventory()
     total_tokens = 0
     resultados = []
@@ -287,6 +328,7 @@ def main() -> int:
         reset_session(session)  # aislamiento de la memoria de corto plazo
         memoria_before = len(LongTermMemory.all())
         exports_before = len(list(EXPORTS.glob("*.json"))) if EXPORTS.exists() else 0
+        stock_antes = _stock_actual()
 
         t0 = time.time()
         respuesta, resultado = "", {}
@@ -299,12 +341,15 @@ def main() -> int:
 
         memoria_after = len(LongTermMemory.all())
         exports_after = len(list(EXPORTS.glob("*.json"))) if EXPORTS.exists() else 0
+        stock_despues = _stock_actual()
         ctx = {
             "inventory": inventory,
             "memoria_before": memoria_before,
             "memoria_after": memoria_after,
             "exports_before": exports_before,
             "exports_after": exports_after,
+            "stock_antes": stock_antes,
+            "stock_despues": stock_despues,
         }
         ok, detalles = evaluar(caso, respuesta, resultado, ctx)
         tools = [s["tool"] for s in resultado["plan"] if s.get("tipo") == "tool_call"]

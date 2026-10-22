@@ -1,9 +1,9 @@
 {
   "meta": {
     "nombre": "Evaluacion del agente Repuestos Sur",
-    "version": "1.0",
+    "version": "1.1",
     "meta_aciertos": 85,
-    "descripcion": "16 casos que cubren busqueda, validacion, guardrails, RAG sobre manuales, escritura (cotizacion en disco y envio por correo) y memoria (corto y largo plazo). El caso C14 depende de que C13 se haya ejecutado antes: prueba la memoria entre sesiones."
+    "descripcion": "18 casos que cubren busqueda, validacion, guardrails, RAG sobre manuales, escritura (cotizacion en disco, envio por correo y venta que baja el stock en la base de datos interna), recomendacion y memoria (corto y largo plazo). El caso C14 depende de que C13 se haya ejecutado antes: prueba la memoria entre sesiones. Los evals corren contra una copia del inventario y una base de datos aparte, asi que no tocan el inventario real."
   },
   "casos": [
     {
@@ -188,7 +188,31 @@
         "genera_archivo": true,
         "no_codigos_inventados": true
       },
-      "justificacion": "Tool de ENVIO: arma el correo con los precios del CSV y deja la cotización en data/exports/ (modo dry-run por defecto: no sale a internet; con SMTP configurado el envío es real y queda registrado en envios.jsonl)."
+      "justificacion": "Tool de ENVIO: arma el correo con los precios del inventario y lo manda por SMTP real (modo por defecto); deja la cotización en data/exports/ y el envío registrado en envios.jsonl. Sin credenciales SMTP el correo queda preparado en un .eml y la tool lo dice."
+    },
+    {
+      "id": "C17",
+      "tipo": "venta",
+      "descripcion": "El cliente confirma la compra: se registra la venta y baja el stock",
+      "entradas": ["Confirmo la compra del ALT-02, llévalo"],
+      "esperado": {
+        "debe_usar_tool": ["registrar_venta"],
+        "stock_baja": {"ALT-02": 1},
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Tool de ESCRITURA en la base de datos interna: la venta descuenta el stock real (ALT-02 pasa de 4 a 3) y devuelve la referencia de la venta. El evaluador comprueba el stock antes y despues en la BD."
+    },
+    {
+      "id": "C18",
+      "tipo": "recomendacion",
+      "descripcion": "El cliente pide una recomendacion: la tool cruza inventario, compatibilidad y manual",
+      "entradas": ["¿Qué repuesto me recomiendas para un Suzuki Swift 2015?"],
+      "esperado": {
+        "debe_usar_tool": ["recomendar_repuesto"],
+        "debe_contener": ["ALT-01"],
+        "no_codigos_inventados": true
+      },
+      "justificacion": "Tool de RECOMENDACION: pipeline completo del encargo (RAG interno + RAG externo + compatibilidad) con el codigo del repuesto y la cita de la fuente (IE1/IE2/IE4)."
     }
   ]
 }

@@ -191,13 +191,48 @@ EvaluacionIA1/
 
 | Tool | Tipo | Para qué |
 |---|---|---|
-| `buscar_repuesto` | consulta | Repuestos compatibles con un vehículo en el CSV |
+| `buscar_repuesto` | consulta | Repuestos compatibles con un vehículo en el inventario |
 | `buscar_en_manual` | consulta | Especificaciones técnicas en los manuales PDF (RAG) |
 | `verificar_compatibilidad` | consulta | Si un código sirve para un vehículo dado |
 | `recuperar_memoria` | consulta | Hechos recordados de sesiones anteriores |
 | `recordar_dato` | **escritura** | Persiste un dato del cliente en largo plazo |
 | `exportar_cotizacion` | **escritura** | Escribe un JSON en `data/exports/` |
-| `enviar_cotizacion_email` | **escritura** | Envía la cotización por correo (SMTP; dry-run por defecto) |
+| `enviar_cotizacion_email` | **escritura** | Envía la cotización por correo (SMTP real) |
+| `registrar_venta` | **escritura** | Registra la venta y **descuenta el stock** en la BD interna |
+| `recomendar_repuesto` | consulta | Recomienda el repuesto cruzando inventario, compatibilidad y manual |
+
+### Base de datos interna, ventas y envío real por correo
+
+El **stock real** vive en `data/internal/tienda.db` (SQLite de la stdlib, sin
+dependencias nuevas): tablas `repuestos`, `ventas`, `venta_items` y
+`movimientos_stock`. El CSV `data/internal/inventory.csv` sigue siendo el
+catálogo (descripción, marca, precio, compatibilidad) y se re-sincroniza con el
+stock después de cada venta, de modo que guardrails, tools, RAG y la interfaz
+web nunca muestran existencias viejas.
+
+- `registrar_venta` descuenta stock de verdad (nunca queda negativo: la
+  transacción se revierte completa), deja la venta auditada con su referencia
+  (`V-0001`) y puede mandar el comprobante por correo.
+- `recomendar_repuesto` es el pipeline completo del encargo: RAG interno +
+  compatibilidad registrada + RAG de manuales con cita de la fuente.
+
+El envío de correo es **real por defecto** (`EMAIL_MODE="smtp"`). Configura en
+`.env` (gitignored, nunca se versiona):
+
+```bash
+EMAIL_MODE="smtp"
+SMTP_HOST="smtp.gmail.com"     # Outlook: smtp.office365.com
+SMTP_PORT="587"
+SMTP_USER="tu-correo@gmail.com"
+SMTP_PASSWORD="..."             # Gmail/Outlook: CONTRASEÑA DE APLICACIÓN
+SMTP_TLS="1"                   # 1 = STARTTLS (587), SMTP_SSL="1" = 465
+EMAIL_FROM="Repuestos Sur"      # vacío = usa SMTP_USER
+EMAIL_DOMAINS_ALLOWLIST="gmail.com,ejemplo.com"   # vacío = sin restricción
+```
+
+La herramienta nunca dice "enviada" si no lo envió: sin credenciales responde
+*"preparada, no se envió"* (deja el `.eml` en `data/exports/`), y si el SMTP
+falla informa el error.
 
 ### 📧 Envío de cotizaciones por correo
 
@@ -206,8 +241,10 @@ El agente pide la dirección del cliente si no se la dieron y luego llama
 stock del CSV** (nunca con lo que dice el modelo), adjunta el JSON de la
 cotización y registra el envío en `data/exports/envios.jsonl`.
 
-Por defecto el envío es **simulado (dry-run)**: el correo queda como `.eml` en
-`data/exports/` y no sale a internet. Para enviar de verdad, configura en `.env`:
+Por defecto el envío es **real por SMTP** (`EMAIL_MODE="smtp"`): el correo sale
+a internet y queda registrado en `data/exports/envios.jsonl`. Si el servidor SMTP
+no está configurado, el correo queda como `.eml` en `data/exports/` (modo
+dry-run) y la herramienta lo dice: nunca afirma un envío que no ocurrió.
 
 ```bash
 EMAIL_MODE="smtp"

@@ -8,15 +8,16 @@ transporta un documento ya construido desde el CSV.
 Modo de operacion (variable ``EMAIL_MODE``):
 
     - ``smtp`` : envia de verdad por SMTP. Requiere ``SMTP_USER`` y
-      ``SMTP_PASSWORD``.
+      ``SMTP_PASSWORD``. Es el **modo por defecto**.
     - ``dry``  : no sale nada a internet. El correo se guarda como ``.eml`` en
       ``data/exports/`` para revision manual.
-    - ``auto`` (default): usa ``smtp`` si hay credenciales, ``dry`` si no.
+    - ``auto`` : usa ``smtp`` si hay credenciales, ``dry`` si no.
 
-El modo por defecto es ``dry``, de modo que un prototipo, una corrida de evals
-o una prueba nunca envia un correo real por accidente. Ademas, cada envio
-(preparado o realizado) queda registrado en ``data/exports/envios.jsonl`` para
-trazabilidad, igual que la traza del agente.
+El modo por defecto es ``smtp``: el agente manda correos reales. Si faltan las
+credenciales, el modulo cae a ``dry`` en vez de fallar en caliente y lo dice
+explicitamente en el mensaje, de modo que la tool nunca afirme que envio algo
+que no salio. Cada envio (preparado o realizado) queda registrado en
+``data/exports/envios.jsonl`` para trazabilidad, igual que la traza del agente.
 """
 from __future__ import annotations
 
@@ -58,9 +59,9 @@ def get_email_config() -> dict:
     ``modo`` queda resuelto a ``smtp`` o ``dry``: si se pide ``smtp`` pero no
     hay credenciales, cae a ``dry`` en vez de fallar en caliente.
     """
-    modo_pedido = (os.getenv("EMAIL_MODE") or "auto").strip().lower()
+    modo_pedido = (os.getenv("EMAIL_MODE") or "smtp").strip().lower()
     if modo_pedido not in ("smtp", "dry", "auto"):
-        modo_pedido = "auto"
+        modo_pedido = "smtp"
 
     user = (os.getenv("SMTP_USER") or "").strip()
     password = os.getenv("SMTP_PASSWORD") or ""
@@ -153,21 +154,36 @@ _precio = formatear_precio
 
 def _linea_item(item: dict) -> str:
     etiqueta = ETIQUETA_STOCK.get(item.get("stock_status", "ok"), "")
+    cantidad = item.get("cantidad")
+    prefixo = f"{cantidad} x " if cantidad else ""
     return (
-        f"- [{item['codigo']}] {item['descripcion']} - ${_precio(item['precio'])} - "
+        f"- [{item['codigo']}] {prefixo}{item['descripcion']} - ${_precio(item['precio'])} - "
         f"Stock: {item['stock']}{etiqueta}"
     )
+
+
+def _tipo_documento(documento: dict) -> str:
+    """'comprobante' si el documento es el comprobante de una venta."""
+    return "comprobante" if documento.get("tipo") == "comprobante" else "cotizacion"
 
 
 def construir_cuerpo_texto(documento: dict, vehiculo: str = "", mensaje: str = "") -> str:
     """Cuerpo en texto plano de la cotizacion (visible sin HTML)."""
     cliente = documento.get("cliente") or "no indicado"
+    es_comprobante = _tipo_documento(documento) == "comprobante"
+    titulo = (
+        f"COMPROBANTE DE VENTA {documento.get('referencia', '')}".strip()
+        if es_comprobante
+        else "COTIZACION"
+    )
     lineas = [
-        "COTIZACION - REPUESTOS SUR",
+        f"{titulo} - REPUESTOS SUR",
         "",
         f"Fecha: {documento.get('fecha', '')}",
         f"Cliente: {cliente}",
     ]
+    if es_comprobante and documento.get("referencia"):
+        lineas.append(f"Venta: {documento['referencia']}")
     if vehiculo:
         lineas.append(f"Vehiculo: {vehiculo}")
     lineas += ["", "Detalle:"]
@@ -185,8 +201,13 @@ def construir_cuerpo_texto(documento: dict, vehiculo: str = "", mensaje: str = "
         "",
         "--",
         "Repuestos Sur | Asistente de ventas",
-        "Esta cotizacion se genero automaticamente con precios y stock tomados "
-        "del inventario de la tienda.",
+        (
+            "Este comprobante se genero automaticamente con precios y stock tomados "
+            "del inventario de la tienda."
+            if es_comprobante
+            else "Esta cotizacion se genero automaticamente con precios y stock tomados "
+            "del inventario de la tienda."
+        ),
     ]
     return "\n".join(lineas)
 
@@ -194,6 +215,12 @@ def construir_cuerpo_texto(documento: dict, vehiculo: str = "", mensaje: str = "
 def construir_cuerpo_html(documento: dict, vehiculo: str = "", mensaje: str = "") -> str:
     """Cuerpo HTML de la cotizacion (alternativa al texto plano)."""
     cliente = documento.get("cliente") or "no indicado"
+    es_comprobante = _tipo_documento(documento) == "comprobante"
+    titulo = (
+        f"Comprobante de venta {documento.get('referencia', '')}".strip()
+        if es_comprobante
+        else "Cotización"
+    )
     filas = []
     for item in documento.get("items", []):
         etiqueta = ETIQUETA_STOCK.get(item.get("stock_status", "ok"), "")
@@ -204,9 +231,11 @@ def construir_cuerpo_html(documento: dict, vehiculo: str = "", mensaje: str = ""
             if etiqueta
             else ""
         )
+        cantidad = item.get("cantidad")
+        prefijo = f"{cantidad} x " if cantidad else ""
         filas.append(
             "<tr>"
-            f"<td><b>[{item['codigo']}]</b> {item['descripcion']}{aviso}</td>"
+            f"<td><b>[{item['codigo']}]</b> {prefijo}{item['descripcion']}{aviso}</td>"
             f"<td align='right'>${_precio(item['precio'])}</td>"
             f"<td align='right'>{item['stock']}</td>"
             "</tr>"
@@ -214,20 +243,31 @@ def construir_cuerpo_html(documento: dict, vehiculo: str = "", mensaje: str = ""
 
     avisos = documento.get("avisos") or []
     bloque_avisos = (
-        "<p style='color:#b3261e'><b>Avisos:</b> " + "; ".join(avisos) + "</p>"
+        f"<p style='color:#b3261e'><b>Avisos:</b> " + "; ".join(avisos) + "</p>"
         if avisos
         else ""
     )
     bloque_mensaje = f"<p>{mensaje.strip()}</p>" if mensaje else ""
     bloque_vehiculo = f"<p><b>Vehiculo:</b> {vehiculo}</p>" if vehiculo else ""
+    bloque_venta = (
+        f"<p><b>Venta:</b> {documento.get('referencia', '')}</p>"
+        if es_comprobante and documento.get("referencia")
+        else ""
+    )
+    pie = (
+        "Comprobante generado automáticamente con precios y stock del inventario de la tienda."
+        if es_comprobante
+        else "Cotización generada automáticamente con precios y stock del inventario de la tienda."
+    )
 
     return f"""<html>
 <body style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#222">
-  <h2 style="margin:0 0 4px">Cotización - Repuestos Sur</h2>
+  <h2 style="margin:0 0 4px">{titulo} - Repuestos Sur</h2>
   <p style="margin:0 0 12px;color:#666">
     Fecha: {documento.get('fecha', '')}<br>
     Cliente: {cliente}
   </p>
+  {bloque_venta}
   {bloque_vehiculo}
   <table cellpadding="6" cellspacing="0" border="1" style="border-collapse:collapse;width:100%">
     <thead style="background:#f2f2f2">
@@ -249,7 +289,7 @@ def construir_cuerpo_html(documento: dict, vehiculo: str = "", mensaje: str = ""
   <hr style="border:none;border-top:1px solid #ddd">
   <p style="font-size:12px;color:#666">
     Repuestos Sur | Asistente de ventas<br>
-    Cotización generada automáticamente con precios y stock del inventario de la tienda.
+    {pie}
   </p>
 </body>
 </html>"""
@@ -267,7 +307,11 @@ def _remitente(cfg: dict) -> tuple[str, str]:
 
 
 def _asunto(documento: dict, vehiculo: str = "") -> str:
+    """Asunto del correo (cotizacion o comprobante de venta)."""
     cliente = documento.get("cliente") or "no indicado"
+    if _tipo_documento(documento) == "comprobante":
+        referencia = documento.get("referencia", "")
+        return f"Comprobante de venta {referencia} - Repuestos Sur".strip()
     if vehiculo:
         return f"Cotización de repuestos - {vehiculo} - {cliente}"
     return f"Cotización de repuestos - {cliente}"
@@ -385,9 +429,15 @@ def enviar_cotizacion_documento(
         ruta = EXPORT_DIR / f"cotizacion_{stamp}.eml"
         ruta.write_bytes(msg.as_bytes())
         resultado["ruta"] = str(ruta)
+        motivo = ""
+        if cfg["modo_pedido"] == "smtp" and not cfg["tiene_credenciales"]:
+            motivo = (
+                "faltan SMTP_USER y SMTP_PASSWORD en el archivo .env "
+                "(en Gmail hay que usar una contrasena de aplicacion)"
+            )
         resultado["detalle"] = (
-            f"Cotizacion preparada en {ruta} (modo dry-run, NO se envio)."
-        )
+            f"Cotizacion preparada en {ruta} (modo dry-run, NO se envio). {motivo}"
+        ).strip()
 
     _registrar_envio(documento, destinatario, cfg, resultado, vehiculo)
     return resultado
@@ -406,6 +456,8 @@ def _registrar_envio(
     """Deja una linea en data/exports/envios.jsonl con el resultado real."""
     registro = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "tipo": _tipo_documento(documento),
+        "referencia": documento.get("referencia", ""),
         "destinatario": destinatario,
         "cliente": documento.get("cliente"),
         "vehiculo": vehiculo or documento.get("vehiculo") or "",

@@ -1,25 +1,99 @@
-"""Busqueda y diagnostico sobre data/internal/inventory.csv.
+"""Busqueda y diagnostico sobre el inventario de la tienda.
 
-Fuente unica valida de verdad para repuestos: precio, stock y compatibilidad.
+El catalogo vive en ``data/internal/inventory.csv`` (descripcion, marca, precio
+y compatibilidad) y el **stock real** vive en la base de datos interna
+(``tools/db.py``): ``load_inventory`` devuelve el catalogo del CSV con el stock
+que quedo en la BD, y ``sincronizar_stock_csv`` re-escribe el CSV despues de
+cada venta para que el archivo y la base de datos digan lo mismo.
+
 Todo lo que el agente afirma sobre un repuesto debe poder trazarse hasta aqui.
 """
 from __future__ import annotations
 
 import csv
+import os
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-INVENTORY_PATH = ROOT / "data" / "internal" / "inventory.csv"
+
+
+def _ruta_inventario() -> Path:
+    """Ruta del CSV del inventario (variable de entorno ``INVENTORY_PATH``).
+
+    Las rutas relativas se resuelven contra la raiz del proyecto. Los evals
+    apuntan a una copia para no modificar el inventario real.
+    """
+    raw = (os.getenv("INVENTORY_PATH") or "").strip()
+    if not raw:
+        return ROOT / "data" / "internal" / "inventory.csv"
+    ruta = Path(raw)
+    if not ruta.is_absolute():
+        ruta = ROOT / ruta
+    return ruta
+
+
+INVENTORY_PATH = _ruta_inventario()
 
 # Stock menor a esto genera alerta explicita (regla de seguridad del encargo).
 STOCK_CRITICO = 5
 
 
 def load_inventory(path: str | Path = INVENTORY_PATH) -> list[dict]:
-    """Lee el CSV y devuelve una lista de filas como dict."""
+    """Lee el inventario y devuelve una lista de filas como dict.
+
+    El catalogo viene del CSV y el stock de la base de datos interna (que es la
+    verdad): si la BD todavia no existe, se crea y se siembra desde el CSV.
+    """
     with open(path, encoding="utf-8") as f:
-        return list(csv.DictReader(f))
+        filas = list(csv.DictReader(f))
+    try:
+        from tools.db import stock_por_codigo
+
+        stock = stock_por_codigo()
+    except Exception:
+        stock = {}
+    for fila in filas:
+        if fila.get("codigo") in stock:
+            fila["stock"] = str(stock[fila["codigo"]])
+    return filas
+
+
+def sincronizar_stock_csv(stock: dict[str, int], path: str | Path = INVENTORY_PATH) -> bool:
+    """Re-escribe la columna ``stock`` del CSV con el stock real de la BD.
+
+    Se llama despues de cada venta para que el archivo versionado y la base de
+    datos no se contradigan. Solo cambia la columna de stock: el resto del
+    catalogo (descripcion, marca, precio, compatibilidad) queda intacto.
+
+    Devuelve True si el CSV quedo escrito.
+    """
+    if not stock:
+        return False
+    path = Path(path)
+    with open(path, encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        campos = list(reader.fieldnames or [])
+        filas = list(reader)
+    if "codigo" not in campos or "stock" not in campos:
+        return False
+
+    cambios = 0
+    for fila in filas:
+        codigo = fila.get("codigo", "")
+        if codigo in stock and str(fila.get("stock")) != str(stock[codigo]):
+            fila["stock"] = str(stock[codigo])
+            cambios += 1
+    if not cambios:
+        return False
+
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    with open(tmp, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=campos)
+        writer.writeheader()
+        writer.writerows(filas)
+    os.replace(tmp, path)
+    return True
 
 
 def year_matches(compat: str, year: int) -> bool:
@@ -111,14 +185,48 @@ def find_by_code(inventory: list[dict], code: str) -> dict | None:
     return None
 
 
-def stock_status(item: dict) -> str:
-    """'agotado' | 'critico' | 'ok' segun el stock de la fila."""
-    stock = int(item["stock"])
-    if stock <= 0:
+def compatibilidad_vehiculo(item: dict, vehiculo: str) -> dict:
+    """Contrasta un repuesto con un vehiculo-describedo.
+
+    Devuelve el detalle del cruce contra ``vehiculos_compatibles``:
+
+        {"coincide": bool, "anio": int|None, "anio_ok": bool, "palabras": [...]}
+
+    ``coincide`` es True solo si el modelo del vehiculo aparece en la
+    compatibilidad registrada y, si el vehiculo trae anio, ese anio cae dentro
+    de los rangos de la pieza.
+    """
+    texto_vehiculo = (vehiculo or "").lower()
+    compat = (item.get("vehiculos_compatibles") or "").lower()
+    palabras = [p for p in re.split(r"\W+", texto_vehiculo) if len(p) >= 3]
+    coincidencias = [p for p in palabras if p in compat]
+    anio = re.search(r"\b(?:19|20)\d{2}\b", texto_vehiculo)
+    anio_int = int(anio.group()) if anio else None
+    anio_ok = year_matches(compat, anio_int) if anio_int else True
+    return {
+        "coincide": bool(coincidencias) and anio_ok,
+        "anio": anio_int,
+        "anio_ok": anio_ok,
+        "palabras": coincidencias,
+    }
+
+
+def estado_stock(stock: int) -> str:
+    """'agotado' | 'critico' | 'ok' a partir de una cantidad."""
+    try:
+        valor = int(stock)
+    except (TypeError, ValueError):
+        return "ok"
+    if valor <= 0:
         return "agotado"
-    if stock < STOCK_CRITICO:
+    if valor < STOCK_CRITICO:
         return "critico"
     return "ok"
+
+
+def stock_status(item: dict) -> str:
+    """'agotado' | 'critico' | 'ok' segun el stock de la fila."""
+    return estado_stock(item["stock"])
 
 
 def get_catalog_summary(inventory: list[dict]) -> str:
