@@ -14,6 +14,7 @@ Uso:  python web/server.py  [puerto]
 from __future__ import annotations
 
 import json
+import os
 import sys
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,6 +29,7 @@ from tools.inventory_lookup import ROOT, load_inventory  # noqa: E402
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 CONTENT_TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css"}
 MAX_BODY = 64 * 1024  # 64KB: el chat no deberia mandar mas que esto
+MAX_MESSAGE_CHARS = 4000
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -39,6 +41,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         self.wfile.write(body)
 
@@ -47,6 +52,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send(status, body, "application/json; charset=utf-8")
 
     def _read_json(self) -> dict:
+        ctype = (self.headers.get("Content-Type") or "").lower()
+        if "application/json" not in ctype:
+            raise ValueError("Content-Type debe ser application/json")
         length = int(self.headers.get("Content-Length") or 0)
         if length <= 0:
             return {}
@@ -60,6 +68,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):  # log breve por linea
         sys.stdout.write("%s - %s\n" % (self.address_string(), fmt % args))
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     # -- rutas ---------------------------------------------------------------
     def do_GET(self):
@@ -94,6 +110,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             data = self._read_json()
         except Exception as exc:
+            msg = str(exc)
+            if "Content-Type" in msg:
+                return self._json({"error": msg}, 415)
             return self._json({"error": f"JSON invalido: {exc}"}, 400)
 
         session = str(data.get("session") or "web")[:64]
@@ -105,6 +124,8 @@ class Handler(BaseHTTPRequestHandler):
             message = str(data.get("message") or "").strip()
             if not message:
                 return self._json({"error": "mensaje vacio"}, 400)
+            if len(message) > MAX_MESSAGE_CHARS:
+                return self._json({"error": f"mensaje demasiado largo (max {MAX_MESSAGE_CHARS} caracteres)"}, 400)
             return self._json(run(message, session_id=session))
         except Exception as exc:
             return self._json({"error": f"{exc.__class__.__name__}: {exc}"}, 500)
@@ -118,16 +139,24 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8000
-    server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    url = f"http://127.0.0.1:{port}"
+    port_env = os.environ.get("REPUSTOS_PORT") or os.environ.get("PORT")
+    if len(sys.argv) > 1:
+        port = int(sys.argv[1])
+    elif port_env:
+        port = int(port_env)
+    else:
+        port = 8000
+    host = os.environ.get("REPUSTOS_HOST", "127.0.0.1")
+    server = ThreadingHTTPServer((host, port), Handler)
+    url = f"http://{host}:{port}"
     print(f"Repuestos Sur - asistente IA")
     print(f"Interfaz: {url}  (Ctrl+C para detener)")
     print(f"Raiz del proyecto: {ROOT}")
-    try:
-        webbrowser.open(url)
-    except Exception:
-        pass
+    if host in ("127.0.0.1", "localhost"):
+        try:
+            webbrowser.open(f"http://127.0.0.1:{port}")
+        except Exception:
+            pass
     try:
         server.serve_forever()
     except KeyboardInterrupt:

@@ -1,0 +1,138 @@
+{
+  "timestamp": "2026-11-23T06:18:52",
+  "cases": [
+    {
+      "test": "validar_email",
+      "input": "''",
+      "ok": false,
+      "motivo": "no se indico ninguna direccion de correo"
+    },
+    {
+      "test": "validar_email",
+      "input": "'a'",
+      "ok": false,
+      "motivo": "'a' no es una direccion de correo valida"
+    },
+    {
+      "test": "validar_email",
+      "input": "'@@@'",
+      "ok": false,
+      "motivo": "'@@@' no es una direccion de correo valida"
+    },
+    {
+      "test": "validar_email",
+      "input": "'user@localhost'",
+      "ok": false,
+      "motivo": "'user@localhost' no es una direccion de correo valida"
+    },
+    {
+      "test": "validar_email",
+      "input": "'user@dominio.com'",
+      "ok": true,
+      "motivo": ""
+    },
+    {
+      "test": "validar_email",
+      "input": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "ok": false,
+      "motivo": "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx@b.com' no es una direccion de correo valida"
+    },
+    {
+      "test": "validar_email",
+      "input": "'bad\\x00@b.com'",
+      "ok": false,
+      "motivo": "'bad\u0000@b.com' no es una direccion de correo valida"
+    },
+    {
+      "test": "validar_email",
+      "input": "'a b@b.com'",
+      "ok": false,
+      "motivo": "'a b@b.com' no es una direccion de correo valida"
+    },
+    {
+      "test": "dominio_permitido",
+      "input": "hacker@evil.com allow=[clientesur.cl]",
+      "ok": true
+    },
+    {
+      "test": "dominio_permitido",
+      "input": "ok@clientesur.cl allow=[clientesur.cl]",
+      "ok": true
+    },
+    {
+      "test": "dominio_permitido",
+      "input": "x@y.com allow=[]",
+      "ok": true
+    },
+    {
+      "test": "guardrails_unicode_guiones",
+      "input": "'Revisar ALT‐01 y ALT‑02 y ALT-99'",
+      "ok": true,
+      "codes": [
+        "ALT-01",
+        "ALT-02",
+        "ALT-99"
+      ]
+    },
+    {
+      "test": "guardrails_largo",
+      "input": "texto largo",
+      "ok": true
+    },
+    {
+      "test": "search_parts_raro",
+      "input": {
+        "marca": "'; DROP TABLE repuestos; --",
+        "modelo": "Swift",
+        "anio": "2015",
+        "tipo": ""
+      },
+      "ok": true,
+      "n_resultados": 0
+    },
+    {
+      "test": "search_parts_raro",
+      "input": {
+        "marca": "Suzuki",
+        "modelo": "Swift\" OR 1=1 --",
+        "anio": "2015",
+        "tipo": ""
+      },
+      "ok": true,
+      "n_resultados": 0
+    },
+    {
+      "test": "search_parts_raro",
+      "input": {
+        "marca": "Suzuki",
+        "modelo": "Swift",
+        "anio": "99999",
+        "tipo": ""
+      },
+      "ok": true,
+      "n_resultados": 0
+    },
+    {
+      "test": "search_parts_raro",
+      "input": {
+        "marca": "Suzuki",
+        "modelo": "Swift",
+        "anio": "dos mil quince",
+        "tipo": ""
+      },
+      "ok": true,
+      "n_resultados": 0
+    },
+    {
+      "test": "search_parts_raro",
+      "input": {
+        "marca": "",
+        "modelo": "",
+        "anio": "",
+        "tipo": ""
+      },
+      "ok": true,
+      "n_resultados": 0
+    }
+  ]
+}

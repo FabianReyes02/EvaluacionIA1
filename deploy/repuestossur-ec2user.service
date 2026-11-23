@@ -1,0 +1,18 @@
+[Unit]
+Description=Repuestos Sur - Asistente IA (web)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/repuestossur/EvaluacionIA1
+EnvironmentFile=/opt/repuestossur/EvaluacionIA1/.env
+Environment=REPUSTOS_HOST=127.0.0.1
+Environment=REPUSTOS_PORT=8000
+ExecStart=/opt/repuestossur/EvaluacionIA1/.venv/bin/python /opt/repuestossur/EvaluacionIA1/web/server.py
+Restart=on-failure
+RestartSec=5
+User=ec2-user
+Group=ec2-user
+
+[Install]
+WantedBy=multi-user.target

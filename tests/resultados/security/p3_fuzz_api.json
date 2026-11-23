@@ -1,0 +1,56 @@
+{
+  "timestamp": "2026-11-23T06:19:42",
+  "port": 8765,
+  "cases": [
+    {
+      "id": "P3.1a",
+      "ok": true,
+      "detail": "GET / -> 200"
+    },
+    {
+      "id": "P3.1b",
+      "ok": true,
+      "detail": "health 200"
+    },
+    {
+      "id": "P3.1c",
+      "ok": true,
+      "detail": "inventory 200"
+    },
+    {
+      "id": "P3.2a",
+      "ok": true,
+      "detail": "chat sin body -> 400"
+    },
+    {
+      "id": "P3.2b",
+      "ok": true,
+      "detail": "mensaje vacio -> 400"
+    },
+    {
+      "id": "P3.2c",
+      "ok": true,
+      "detail": "tipos raros -> 200 (no colapso)"
+    },
+    {
+      "id": "P3.3",
+      "ok": true,
+      "detail": "big body -> 400"
+    },
+    {
+      "id": "P3.4a",
+      "ok": true,
+      "detail": "traversal encoded -> 404"
+    },
+    {
+      "id": "P3.4b",
+      "ok": true,
+      "detail": "traversal dots -> 404"
+    },
+    {
+      "id": "P3.5",
+      "ok": true,
+      "detail": "40 GET health paralelos: todos 200? True"
+    }
+  ]
+}

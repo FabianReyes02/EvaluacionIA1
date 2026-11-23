@@ -529,3 +529,20 @@ python main.py                # CLI marca/modelo/año
 # 6. Evals / evidencia (meta >= 85%; pausa 15s entre casos por defecto)
 python tests/eval_agent.py
 ```
+
+## Actualización 2026-11-23 — Seguridad, hardening web y despliegue AWS (pendiente)
+
+### Seguridad y defensa (scripts)
+- Añadidos en `scripts/`: `security_checks.py` (P1), `simulate_malicious_payloads.py` (P2), `fuzz_api_web.py` (P3), `redteam_prompts.py` (P4) y `SECURITY_TESTS.md`. Se generaron evidencias en `tests/resultados/security/` (P1–P3 en entorno local de pruebas).
+- P1: repo limpio de archivos sensibles trackeados según el escaneo; advertencia heurística solo sobre texto en `AVANCES.md` (revisar manualmente). P2: casos de validación/payloads raros en `ok`. P3 (contra servidor local levantado en `8765`): casos HTTP OK (incluye 400 por JSON vacío/mal Content-Type, body grande, traversal, ráfaga básica a `/api/health`).
+
+### Hardening mínimo en `web/server.py`
+- Exige `Content-Type: application/json` en POST de la API (415 si no coincide), añade headers `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `OPTIONS` básico, límite `MAX_MESSAGE_CHARS=4000` (además de `MAX_BODY`), y bind configurable con `REPUSTOS_HOST`/`REPUSTOS_PORT` (o `PORT`).
+
+### Despliegue AWS (EC2)
+- Carpeta `deploy/`: `repuestossur.service`, `repuestossur-ec2user.service`, `nginx-repuestossur.conf`, `README_AWS.md` (guía Amazon Linux/Ubuntu, Nginx + systemd).
+- Se generó `EvaluacionIA1_deploy.zip` (excluyendo `.env`, `.venv`, `chroma_db`, `logs`, `data/memory/*.jsonl`, `data/exports/*`, BD `tienda*.db*`, etc.) y se probó subida por `scp` con clave `IA.pem` (permisos ajustados localmente).
+- Instancias probadas: primero `54.235.52.101` (fallos de SG/permisos SSH en ese momento) luego `32.198.107.227` (Amazon Linux 2023, volumen 25G). Se desplegó app en `/opt/repuestossur/EvaluacionIA1`, venv con Python 3.11, `.env` con Groq, `systemd` + Nginx levantados; `GET /api/health` respondió OK. **Pendiente**: `requirements.txt` tiene pins incompatibles con Python 3.11 en ese entorno (p. ej. `networkx==3.7`) y al instalar dependencias completas aparecen descargas muy pesadas (torch/CUDA) que no caben en práctica en el flujo intentado; `sentence-transformers`/RAG completo no quedó operativo en esa instancia. También ajustar Security Group para exponer HTTP 80 públicamente según necesidad.
+
+### Pendiente explícito
+- Completar instalación reproducible en EC2 (ajustar `requirements` para server mínimo o ampliar volumen/estrategia) y verificar RAG/embeddings si se requieren; opcional P4 con API key y P5/P6 de despliegue.

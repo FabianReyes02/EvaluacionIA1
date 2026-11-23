@@ -1,0 +1,17 @@
+{
+  "timestamp": "2026-11-23T06:18:47",
+  "tracked_files_count": 46,
+  "tracked_forbidden": [],
+  "dangerous_patterns": [],
+  "secret_scan_hits": [
+    {
+      "path": "AVANCES.md",
+      "note": "posible secreto hardcodeado (revisar manualmente)"
+    }
+  ],
+  "summary": {
+    "tracked_forbidden_ok": true,
+    "dangerous_patterns_ok": true,
+    "secret_scan_ok": false
+  }
+}
