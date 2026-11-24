@@ -2,6 +2,11 @@
 
 Opción elegida por defecto: **EC2** detrás de **Nginx** (reverse proxy), servicio **systemd**. No expongas el puerto 8000 a internet; abre solo 80/443 en el Security Group.
 
+Si el laboratorio se cerró y abrís una sesión nueva, antes que nada mirá
+**[REINICIO_LAB.md](REINICIO_LAB.md)**: las credenciales cambian, la IP pública
+de la instancia cambia y hay que actualizar la regla SSH. Casi nunca hace falta
+redeployar.
+
 ## 1) Preparar la instancia
 - AMI: Amazon Linux 2023 o Ubuntu 22.04+.
 - Security Group (inbound): SSH **solo tu IP** (o usa **SSM Session Manager** y no abras SSH) + HTTP 80 (y 443 si usas TLS).

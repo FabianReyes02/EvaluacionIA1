@@ -546,7 +546,8 @@ python tests/eval_agent.py
 
 ### Estado del despliegue (resuelto 2026-11-24)
 - Instancia `i-083d6ec1a6e00ca33` (`t3.medium`, Amazon Linux 2023, 30 GB,
-  us-east-1a), IP pública `107.23.210.248`. Security Group: SSH solo desde la
+  us-east-1a). IP pública original `107.23.210.248`; al reabrir el laboratorio
+  el 2026-11-24 la instancia quedó en `54.87.5.227` (ver nota abajo). Security Group: SSH solo desde la
   IP del equipo, HTTP 80 y HTTPS 443 públicos, puerto 8000 **no** expuesto.
 - La incompatibilidad de `requirements.txt` se resolvió con **Python 3.12.16**
   (disponible en AL2023) e instalando primero `torch==2.14.1` desde el índice
@@ -570,3 +571,12 @@ python tests/eval_agent.py
   `nginx.conf` para eliminar el conflicto de `server_name _`.
 - Sigue opcional: TLS (Certbot/ALB), P4 con API key y P5/P6 contra la URL
   pública.
+- **Reapertura del lab (2026-11-24):** la instancia `i-083d6ec1a6e00ca33`
+  sobrevivió al cierre de sesión, pero al reiniciarse tomó la IP pública
+  **`54.87.5.227`** y las credenciales temporales anteriores vencieron
+  (`ExpiredToken`). No hubo que redeployar: `systemd` levantó solos los
+  servicios, se actualizó la regla SSH del SG a la IP nueva del equipo
+  (`181.43.8.166/32`) y `git pull --ff-only` sincronizó el checkout remoto a
+  `d89fb6f`. `/api/health` y un `POST /api/chat` real volvieron a dar verde.
+  El procedimiento completo para cada sesión nueva quedó en
+  `deploy/REINICIO_LAB.md`.
