@@ -544,5 +544,29 @@ python tests/eval_agent.py
 - Se generó `EvaluacionIA1_deploy.zip` (excluyendo `.env`, `.venv`, `chroma_db`, `logs`, `data/memory/*.jsonl`, `data/exports/*`, BD `tienda*.db*`, etc.) y se probó subida por `scp` con clave `IA.pem` (permisos ajustados localmente).
 - Instancias probadas: primero `54.235.52.101` (fallos de SG/permisos SSH en ese momento) luego `32.198.107.227` (Amazon Linux 2023, volumen 25G). Se desplegó app en `/opt/repuestossur/EvaluacionIA1`, venv con Python 3.11, `.env` con Groq, `systemd` + Nginx levantados; `GET /api/health` respondió OK. **Pendiente**: `requirements.txt` tiene pins incompatibles con Python 3.11 en ese entorno (p. ej. `networkx==3.7`) y al instalar dependencias completas aparecen descargas muy pesadas (torch/CUDA) que no caben en práctica en el flujo intentado; `sentence-transformers`/RAG completo no quedó operativo en esa instancia. También ajustar Security Group para exponer HTTP 80 públicamente según necesidad.
 
-### Pendiente explícito
-- Completar instalación reproducible en EC2 (ajustar `requirements` para server mínimo o ampliar volumen/estrategia) y verificar RAG/embeddings si se requieren; opcional P4 con API key y P5/P6 de despliegue.
+### Estado del despliegue (resuelto 2026-11-24)
+- Instancia `i-083d6ec1a6e00ca33` (`t3.medium`, Amazon Linux 2023, 30 GB,
+  us-east-1a), IP pública `107.23.210.248`. Security Group: SSH solo desde la
+  IP del equipo, HTTP 80 y HTTPS 443 públicos, puerto 8000 **no** expuesto.
+- La incompatibilidad de `requirements.txt` se resolvió con **Python 3.12.16**
+  (disponible en AL2023) e instalando primero `torch==2.14.1` desde el índice
+  CPU (`--index-url https://download.pytorch.org/whl/cpu`): el wheel
+  `2.14.1+cpu` satisface el pin y evita las ruedas CUDA de varios GB. El entorno
+  completo ocupa ~5 GB, sin ampliar el volumen. Receta documentada en
+  `deploy/README_AWS.md` (commit `a4f70af`).
+- Repo clonado en `/opt/repuestossur/EvaluacionIA1`, `.env` con `GROQ_API_KEY`
+  (`chmod 600`, modelo `openai/gpt-oss-120b`, `EMAIL_MODE="dry"`, LangSmith
+  apagado). RAG reconstruido: 3 manuales + 12 filas de inventario.
+- `python scripts/verify_env.py` en la instancia: todo verde (Groq responde,
+  tool-calling, agente con 9 tools, embeddings 384d, ChromaDB recupera).
+- `systemd` (`repuestossur`) y Nginx activos. `GET /`, `/api/health` y
+  `/api/inventory` responden 200 desde internet; `/api/health` reporta
+  `llm_disponible: true` y `modelo: openai/gpt-oss-120b`.
+- Chat real por la IP pública: el agente llamó `recomendar_repuesto`, citó
+  `manual_alternador.pdf` pág. 1 y devolvió el precio del CSV para un
+  Suzuki Swift 2014 (ALT-01, $289.990, stock 7), 0 reintentos.
+- Hardening verificado en el servidor: fuzz P3 10/10 OK y POST con
+  `Content-Type: text/plain` → HTTP 415. Se comentó el `server` default de
+  `nginx.conf` para eliminar el conflicto de `server_name _`.
+- Sigue opcional: TLS (Certbot/ALB), P4 con API key y P5/P6 contra la URL
+  pública.
