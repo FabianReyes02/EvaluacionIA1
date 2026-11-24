@@ -580,3 +580,11 @@ python tests/eval_agent.py
   `d89fb6f`. `/api/health` y un `POST /api/chat` real volvieron a dar verde.
   El procedimiento completo para cada sesión nueva quedó en
   `deploy/REINICIO_LAB.md`.
+- **LangSmith conectado (2026-11-24):** el `.env` del servidor tenía un token
+  `lsv...` distinto del vigente en el checkout local y la API respondía
+  `403 Forbidden`. Se sincronizó el token válido desde el `.env` local (sin
+  imprimirlo), se puso `LANGSMITH_TRACING=true` y se reinició el servicio.
+  Verificación con el cliente `langsmith`: proyecto `EvaluacionIA1` listado y
+  trazas reales de una consulta (`ChatOpenAI`, `recomendar_repuesto`, `tools`,
+  `model`) con fecha 2026-11-24 19:24 UTC. El token no se versiona: vive solo
+  en los `.env` (gitignored) con permisos 600.

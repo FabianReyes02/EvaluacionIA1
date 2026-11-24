@@ -120,6 +120,19 @@ sudo systemctl restart repuestossur
 El `.env` guarda `GROQ_API_KEY` con `chmod 600` y no viaja en git. Si la key
 cambió, reescribí esa línea y reiniciá el servicio.
 
+Si usás **LangSmith**, revisá también que `LANGSMITH_TRACING=true` y que
+`LANGSMITH_API_KEY` sea la key vigente (un token viejo da `403 Forbidden` en
+la API y no genera trazas). Para comprobarlo en el servidor:
+
+```bash
+grep -E '^(LANGSMITH_TRACING|LANGSMITH_PROJECT)=' .env   # sin imprimir la key
+cd /opt/repuestossur/EvaluacionIA1
+.venv/bin/python -c "from langsmith import Client; print([p.name for p in Client().list_projects()])"
+```
+
+Debe listar `EvaluacionIA1`. Después de una consulta al chat, deben aparecer
+runs con `client.list_runs(project_name='EvaluacionIA1', limit=5)`.
+
 ### 7. Si la instancia fue terminada (ya no aparece en `describe-instances`)
 
 Ahí sí hay que desplegar desde cero. Seguí **`deploy/README_AWS.md`**, con el
