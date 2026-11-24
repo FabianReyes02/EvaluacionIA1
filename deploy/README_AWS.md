@@ -17,7 +17,7 @@ sudo apt install -y python3.12 python3.12-venv python3-pip nginx git
 En Amazon Linux 2023:
 
 ```bash
-sudo dnf install -y python3.11 python3.11-pip git nginx
+sudo dnf install -y python3.12 python3.12-pip python3.12-devel git nginx
 ```
 
 (Ajusta el nombre del paquete de Python al que tengas disponible.)
@@ -38,6 +38,28 @@ python3.12 -m venv .venv   # o python3.11
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
+
+### 3.b) Python 3.12 + PyTorch CPU (verificado en Amazon Linux 2023)
+
+`requirements.txt` tiene pins que necesitan Python >= 3.12 (p. ej.
+`networkx==3.7`) y `torch==2.14.1` de PyPI arrastra ruedas CUDA de varios GB.
+En una instancia con 25-30 GB conviene instalar **primero** la rueda CPU y
+después el resto: el `2.14.1+cpu` satisface el pin `==2.14.1`, así que pip no
+vuelve a descargar PyTorch.
+
+```bash
+sudo dnf install -y python3.12 python3.12-pip python3.12-devel git nginx
+python3.12 -m venv .venv
+.venv/bin/python -m pip install --upgrade pip setuptools wheel
+.venv/bin/python -m pip install 'torch==2.14.1' --index-url https://download.pytorch.org/whl/cpu
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -c "import torch; print(torch.__version__)"   # 2.14.1+cpu
+```
+
+Con esto el entorno completo (incluida la descarga del modelo de embeddings)
+ocupa ~5 GB; no hace falta ampliar el volumen ni instalar CUDA. En AL2023 el
+`nginx.conf` trae un `server` default en el puerto 80: si el proxy no responde,
+comentá ese bloque o marcá nuestro vhost como `default_server`.
 
 ## 4) Variables de entorno (`.env`)
 
