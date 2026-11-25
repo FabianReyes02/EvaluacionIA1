@@ -92,8 +92,13 @@ python web/server.py 8080        # otro puerto
 ```
 
 La interfaz requiere **login**. En `/register` cualquier compañero crea su
-cuenta de **cliente** y entra al chat (búsqueda rápida + conversación con
-historial). El **admin** (creado desde `ADMIN_USER`/`ADMIN_PASSWORD` en `.env`)
+cuenta de **cliente** con usuario, contraseña y **correo electrónico**
+(acepta direcciones de prueba como `probador1@lab`: no tienen que ser reales).
+Ese correo queda asociado a la cuenta: cuando el cliente pida enviar una
+cotización, el agente lo usa como destinatario sin volver a preguntarlo,
+incluso si en el chat escribe otra dirección. Con `EMAIL_MODE="dry"` la
+cotización queda preparada en un `.eml` y la herramienta lo dice
+explícitamente. El **admin** (creado desde `ADMIN_USER`/`ADMIN_PASSWORD` en `.env`)
 tiene `/admin` con: alta/gestión de usuarios, sesiones activas (se pueden
 cerrar), auditoría de los últimos 30 días y el inventario con alertas de
 stock. El cliente **no** ve inventario ni el panel.
