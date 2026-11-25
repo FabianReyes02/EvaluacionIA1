@@ -58,7 +58,7 @@ def reload_inventory() -> None:
 def buscar_repuesto(marca: str, modelo: str, anio: str, tipo_repuesto: str = "") -> str:
     """Busca en el inventario de la tienda repuestos COMPATIBLES con un vehiculo.
 
-    Usala siempre que el cliente pida un repuesto o pregunte precios/stock.
+    Úsala siempre que el cliente pida un repuesto o pregunte precios/stock.
     marca, modelo y anio son obligatorios (ej: 'Suzuki', 'Swift', '2015').
     tipo_repuesto es opcional y filtra por tipo de pieza (ej: 'alternador',
     'pastillas de freno', 'kit embrague', 'filtro').
@@ -112,7 +112,7 @@ def buscar_repuesto(marca: str, modelo: str, anio: str, tipo_repuesto: str = "")
 def buscar_en_manual(consulta: str) -> str:
     """Recupera especificaciones tecnicas de los manuales PDF de repuestos (RAG).
 
-    Usala para dudas tecnicas: amperaje, medidas, torque, instalacion,
+    Úsala para dudas tecnicas: amperaje, medidas, torque, instalacion,
     periodicidad de mantencion, que incluye un kit, etc.
     ``consulta`` debe ser la pregunta tecnica (ej: 'especificaciones alternador
     12V 90A amperaje medidas').
@@ -179,7 +179,7 @@ def verificar_compatibilidad(codigo: str, vehiculo: str) -> str:
 def recordar_dato(dato: str, categoria: str = "general") -> str:
     """Guarda en la memoria de LARGO PLAZO un dato importante del cliente.
 
-    Usala cuando el cliente te diga algo que deba recordarse entre sesiones:
+    Úsala cuando el cliente te diga algo que deba recordarse entre sesiones:
     su vehiculo ('mi auto es un Suzuki Swift 2015'), preferencias, presupuesto,
     compras anteriores. categoria ej: 'vehiculo', 'preferencia', 'compra'.
     NO guardes saludos ni datos que solo sirven para esta conversacion.
@@ -195,7 +195,7 @@ def recordar_dato(dato: str, categoria: str = "general") -> str:
 def recuperar_memoria(consulta: str) -> str:
     """Busca en la memoria de LARGO PLAZO lo que se haya recordado de clientes.
 
-    Usala al inicio de una conversacion o cuando necesites saber quien es el
+    Úsala al inicio de una conversacion o cuando necesites saber quien es el
     cliente, que vehiculo tiene o que compro antes. ``consulta`` ej: 'vehiculo
     del cliente', 'compras anteriores'. Si no hay nada guardado, lo dice.
     """
@@ -277,7 +277,7 @@ def exportar_cotizacion(codigos: list[str], cliente: str = "") -> str:
 
     ``codigos`` es la lista de codigos del inventario a cotizar (ej:
     ['ALT-01', 'FLT-01']). Crea un PDF en data/exports/ con fecha, cliente,
-    detalle y total (y una copia .json con los mismos datos). Usala SOLO cuando
+    detalle y total (y una copia .json con los mismos datos). Úsala SOLO cuando
     el cliente pida cotizar, guardar o enviar la cotizacion.
     """
     documento, _ = _construir_cotizacion(codigos, cliente)
@@ -306,7 +306,7 @@ def enviar_cotizacion_email(
 ) -> str:
     """Envia por correo electronico la cotizacion de los repuestos indicados.
 
-    Usala cuando el cliente pida ENVIAR la cotizacion por correo (ej: "mandame
+    Úsala cuando el cliente pida ENVIAR la cotizacion por correo (ej: "envíame
     la cotizacion a juan@correo.com"). ``codigos`` son los codigos del
     inventario a cotizar (ej: ['ALT-01']) y ``email_cliente`` la direccion de
     destino. ``vehiculo`` y ``mensaje`` son opcionales.
@@ -318,13 +318,13 @@ def enviar_cotizacion_email(
     preparada, jamas que fue enviada.
 
     Si el cliente no dio su direccion de correo, NO la inventes ni la deduzcas:
-    pidela primero y despues llama esta herramienta.
+    pídela primero y despues llama esta herramienta.
     """
     ok, motivo = validar_email(email_cliente)
     if not ok:
         return (
             f"No puedo enviar la cotizacion por correo: {motivo}. "
-            "Pidele al cliente su direccion de correo (ej: juan@correo.com) "
+            "Pídele al cliente su direccion de correo (ej: juan@correo.com) "
             "y vuelve a llamar esta herramienta."
         )
 
@@ -382,7 +382,7 @@ def registrar_venta(
 ) -> str:
     """Registra una VENTA real: descuenta el stock del inventario del cliente.
 
-    Usala SOLO cuando el cliente confirme la compra ("lo llevo", "confirmo la
+    Úsala SOLO cuando el cliente confirme la compra ("lo llevo", "confirmo la
     compra", "proceda con la venta"). ``codigos`` son los codigos del
     inventario (ej: ['ALT-01']) y ``cantidades`` es opcional (por defecto 1 de
     cada uno). El descuento se hace en la base de datos interna de la tienda
@@ -558,7 +558,7 @@ def _manual_hits(consulta: str, k: int = 2) -> tuple[list[dict], str]:
 def recomendar_repuesto(marca: str, modelo: str, anio: str, tipo_repuesto: str = "") -> str:
     """Recomienda el repuesto correcto para un vehiculo (RAG interno + manual + compatibilidad).
 
-    Usala cuando el cliente pida una recomendacion ("que repuesto me recomiendas
+    Úsala cuando el cliente pida una recomendacion ("que repuesto me recomiendas
     para...", "que me conviene para..."). Cruza las tres fuentes del encargo:
     el inventario (precio y stock REAL), la compatibilidad registrada para el
     vehiculo y las especificaciones de los manuales tecnicos, y devuelve el
