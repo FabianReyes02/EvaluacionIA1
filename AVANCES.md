@@ -530,7 +530,7 @@ python main.py                # CLI marca/modelo/año
 python tests/eval_agent.py
 ```
 
-## Actualización 2026-11-23 — Seguridad, hardening web y despliegue AWS (pendiente)
+## Actualización 2026-11-23 — Seguridad, hardening web y despliegue AWS (resuelto)
 
 ### Seguridad y defensa (scripts)
 - Añadidos en `scripts/`: `security_checks.py` (P1), `simulate_malicious_payloads.py` (P2), `fuzz_api_web.py` (P3), `redteam_prompts.py` (P4) y `SECURITY_TESTS.md`. Se generaron evidencias en `tests/resultados/security/` (P1–P3 en entorno local de pruebas).
@@ -624,3 +624,21 @@ hallazgo de que cualquiera podía hacer `curl /api/inventory`, se cerró D18/D19
   matriz de permisos y latencia p50/p95; evidencia en
   `tests/resultados/load/load_test.json`). `scripts/fuzz_api_web.py` actualizado
   para la API autenticada.
+
+### Verificación en EC2 (2026-11-25)
+- La sesión nueva del lab dejó la instancia `i-083d6ec1a6e00ca33` en
+  **`http://34.201.171.124/`** (antes `54.87.5.227`). Como el PEM local no
+  coincidía con el par `repuestossur-ia`, se entró con **EC2 Instance Connect**
+  (clave temporal inyectada por API) y se actualizó la regla SSH del SG a la IP
+  actual del equipo. El procedimiento quedó en `deploy/REINICIO_LAB.md`.
+- `git pull --ff-only origin main` → commit `1fbb127`, `.env` completado con las
+  variables de auth (`ADMIN_USER=admin`, password hasheado en
+  `data/internal/auth.db`, `chmod 600`) y `systemctl restart repuestossur`.
+  `/api/health` volvió a 200 con `llm_disponible: true`, 12 repuestos y
+  3 manuales + 12 filas en Chroma.
+- `scripts/load_test.py --users 5 --requests 1` contra el servidor real:
+  **5/5 respuestas 200**, 0 respuestas 503, p50 14.8 s / p95 40.1 s (chats con
+  el LLM real), `anon_inventory: 401`, `cliente_inventory: 403`,
+  `cliente_admin: 403`, endpoints de admin 200. Auditoría: 20 eventos,
+  8 sesiones activas y 6 usuarios. Un chat separado respondió con ALT-01
+  ($289.990, stock 7) usando `openai/gpt-oss-120b` y 0 reintentos.

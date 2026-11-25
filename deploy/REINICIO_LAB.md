@@ -45,6 +45,8 @@ aws ec2 describe-instances --profile repuestos --region us-east-1 `
 ```
 
 Anotá la **IP pública nueva** de `repuestossur-ia` (`i-083d6ec1a6e00ca33`).
+Al 2026-11-25 estaba en **`34.201.171.124`**; no la des actualices a mano:
+consultala siempre con `describe-instances` porque cambia al reiniciar el lab.
 Si aparece `stopped`:
 
 ```powershell
@@ -79,6 +81,57 @@ icacls "C:\ruta\IA.pem" /inheritance:r /grant:r "$($env:USERNAME):F"
 
 ssh -i "C:\ruta\IA.pem" ec2-user@IP_NUEVA
 ```
+
+Si el PEM que tenés no coincide con el par `repuestossur-ia` (o el lab te
+entregó uno nuevo que no alcanza a bajar), usá **EC2 Instance Connect**: la
+clave se inyecta por API y sirve por 60 segundos.
+
+```powershell
+# 1) clave temporal local
+$key = "$env:TEMP\opencode\repuestossur_deploy.pem"
+ssh-keygen -t rsa -b 2048 -f $key -N '""' -q
+$pub = (Get-Content "$key.pub" -Raw).Trim()
+
+# 2) inyectar (repetir antes de cada ssh porque expira)
+$az = aws ec2 describe-instances --instance-ids i-083d6ec1a6e00ca33 `
+  --query 'Reservations[0].Instances[0].Placement.AvailabilityZone' --output text
+aws ec2-instance-connect send-ssh-public-key `
+  --instance-id i-083d6ec1a6e00ca33 --instance-os-user ec2-user `
+  --availability-zone $az --ssh-public-key $pub
+
+# 3) entrar
+ssh -i $key ec2-user@IP_NUEVA
+```
+
+Acordate de actualizar primero la regla SSH del SG con tu IP actual (paso 3).
+
+## 4b. Variables de auth después de un `git pull`
+
+El `.env` del servidor ya tiene estas claves; si faltan, agregarlas **sin
+imprimir la password** y con `chmod 600 .env`:
+
+```env
+ADMIN_USER="admin"
+ADMIN_PASSWORD="<password elegida; solo en el .env del servidor>"
+AUTH_DB_PATH="data/internal/auth.db"
+WEB_SESSION_TTL_S="28800"
+LOGIN_MAX_ATTEMPTS="5"
+LOGIN_LOCKOUT_S="900"
+REGISTER_MAX_PER_HOUR="50"
+AUDIT_RETENTION_DAYS="30"
+MAX_CONCURRENT_CHATS="3"
+CHAT_QUEUE_WAIT_S="15"
+CHAT_RATE_LIMIT_PER_MIN="20"
+WEB_RETRY_WAIT_S="5"
+AGENT_CIRCUIT_THRESHOLD="3"
+AGENT_CIRCUIT_COOLDOWN_S="30"
+REPUSTOS_HTTPS="0"
+REPUSTOS_ALLOWED_ORIGIN=""
+```
+
+Ojo: si el `.env` no termina con salto de línea, la primera variable que
+agregues con `>>` se concatena con la última línea y `python-dotenv` no la
+lee. Agregá un `printf '\n'` antes del primer `>>` o corregí esa línea.
 
 Dentro del servidor:
 

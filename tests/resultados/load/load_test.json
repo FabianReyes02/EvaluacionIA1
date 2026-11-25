@@ -1,15 +1,15 @@
 {
-  "timestamp": "2026-11-24T21:30:57",
-  "url": "http://127.0.0.1:8765",
-  "usuarios": 10,
+  "timestamp": "2026-11-25T00:44:50",
+  "url": "http://127.0.0.1:8000",
+  "usuarios": 5,
   "consultas_por_usuario": 1,
-  "total_consultas": 10,
+  "total_consultas": 5,
   "estados": {
-    "200": 10
+    "200": 5
   },
   "respuestas_503_controladas": 0,
-  "latencia_p50_s": 0.274,
-  "latencia_p95_s": 0.309,
+  "latencia_p50_s": 14.782,
+  "latencia_p95_s": 40.123,
   "permisos": {
     "anon_inventory": 401,
     "anon_root": 200,
@@ -25,7 +25,7 @@
   },
   "salud": {
     "code": 200,
-    "body": "{\"llm_disponible\": false, \"proveedor\": null, \"modelo\": null, \"repuestos\": 12, \"correo_modo\": \"dry\", \"correo_configurado\": false, \"indice\": {\"colecciones\": {}}}"
+    "body": "{\"llm_disponible\": true, \"proveedor\": \"groq\", \"modelo\": \"openai/gpt-oss-120b\", \"repuestos\": 12, \"correo_modo\": \"dry\", \"correo_configurado\": false, \"indice\": {\"colecciones\": {\"manuales\": 3, \"inventario\": 12}}}"
   },
   "errores": [],
   "ok": true

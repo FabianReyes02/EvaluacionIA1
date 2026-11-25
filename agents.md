@@ -497,5 +497,9 @@ EvaluacionIA1/
   inventario, y cola/circuit breaker para 5-10 consultas concurrentes.
   Verificado en local con `pytest` (26 pruebas), `scripts/load_test.py`
   (10 usuarios, 10/200, sin 5xx) y `scripts/fuzz_api_web.py` (13/13).
-  El despliegue en EC2 quedó pendiente porque el lab fue cancelado
-  (`voc-cancel-cred`: `ec2:DescribeInstances` denegado y SSH sin respuesta).
+  Desplegado en EC2 con la sesión nueva del lab: la instancia
+  `i-083d6ec1a6e00ca33` sobrevivió y quedó en `34.201.171.124`; se actualizó
+  la regla SSH, se hizo `git pull --ff-only origin main` (commit `1fbb127`),
+  se cargaron las variables de auth en `.env` (chmod 600) y se reinició el
+  servicio. Verificado en producción: 5/5 chats concurrentes con IA (0 503),
+  matriz de roles, 20 eventos de auditoría y respuesta citando ALT-01.
