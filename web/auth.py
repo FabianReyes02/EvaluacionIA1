@@ -61,7 +61,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
     password_hash TEXT NOT NULL,
     rol           TEXT NOT NULL CHECK (rol IN ('cliente','admin')),
     activo        INTEGER NOT NULL DEFAULT 1,
-    creado_en     TEXT NOT NULL
+    creado_en     TEXT NOT NULL,
+    email         TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS sesiones (
     token_hash TEXT PRIMARY KEY,
@@ -110,9 +111,28 @@ def conexion():
         conn.close()
 
 
+def validar_email_registro(email: str) -> str:
+    """Correo de una cuenta de prueba: cualquier ``algo@algo``, sin exigir real.
+
+    Los evaluadores usan direcciones ficticias (por ejemplo ``probador1@lab``):
+    alcanza con que tenga un ``@`` con texto a cada lado y sin espacios. La
+    validación estricta de SMTP sigue en ``tools.email_sender.validar_email``.
+    """
+    correo = (email or "").strip()
+    if not correo:
+        raise AuthError("indica un correo electrónico")
+    if len(correo) > 254 or not re.fullmatch(r"[^@\s<>]+@[^@\s<>]+", correo):
+        raise AuthError("correo electrónico inválido (debe ser algo@algo)")
+    return correo
+
+
 def inicializar() -> None:
     with _WRITE_LOCK, conexion() as conn:
         conn.executescript(SCHEMA)
+        # Migración: las BD creadas antes del campo email siguen siendo válidas.
+        columnas = {fila["name"] for fila in conn.execute("PRAGMA table_info(usuarios)")}
+        if "email" not in columnas:
+            conn.execute("ALTER TABLE usuarios ADD COLUMN email TEXT NOT NULL DEFAULT ''")
 
 
 # --------------------------------------------------------------------------
@@ -249,13 +269,15 @@ def ensure_bootstrap_admin() -> bool:
         try:
             user = validar_username(user)
             stored = password_hash if password_hash else hash_password(password)
+            email_admin = (os.getenv("ADMIN_EMAIL") or "").strip()
+            email_admin = validar_email_registro(email_admin) if email_admin else ""
         except AuthError as exc:
             print(f"[auth] No se pudo crear el admin inicial: {exc}")
             return False
         conn.execute(
-            "INSERT OR IGNORE INTO usuarios (username, password_hash, rol, activo, creado_en) "
-            "VALUES (?,?,?,1,?)",
-            (user, stored, "admin", datetime.now().isoformat(timespec="seconds")),
+            "INSERT OR IGNORE INTO usuarios (username, password_hash, rol, activo, creado_en, email) "
+            "VALUES (?,?,?,1,?,?)",
+            (user, stored, "admin", datetime.now().isoformat(timespec="seconds"), email_admin),
         )
         auditoria("crear_admin", usuario=user, rol="admin", detalle="bootstrap desde .env", conn=conn)
     return True
@@ -265,7 +287,7 @@ def listar_usuarios() -> list[dict]:
     inicializar()
     with conexion() as conn:
         filas = conn.execute(
-            "SELECT id, username, rol, activo, creado_en FROM usuarios ORDER BY id"
+            "SELECT id, username, rol, activo, creado_en, email FROM usuarios ORDER BY id"
         ).fetchall()
     out = []
     for f in filas:
@@ -282,9 +304,13 @@ def crear_usuario(
     ip: str = "",
     user_agent: str = "",
     creado_por: str = "",
+    email: str = "",
 ) -> dict:
     user = validar_username(username)
     rol = validar_rol(rol)
+    # El alta pública exige correo (ver registrar_usuario_publico); las altas
+    # internas (bootstrap admin, pruebas) pueden dejarlo vacío.
+    correo = validar_email_registro(email) if (email or "").strip() else ""
     stored = hash_password(password)
     inicializar()
     with _WRITE_LOCK, conexion() as conn:
@@ -294,9 +320,9 @@ def crear_usuario(
                       detalle="usuario ya existe", conn=conn)
             raise AuthError("ese usuario ya existe")
         cur = conn.execute(
-            "INSERT INTO usuarios (username, password_hash, rol, activo, creado_en) "
-            "VALUES (?,?,?,1,?)",
-            (user, stored, rol, datetime.now().isoformat(timespec="seconds")),
+            "INSERT INTO usuarios (username, password_hash, rol, activo, creado_en, email) "
+            "VALUES (?,?,?,1,?,?)",
+            (user, stored, rol, datetime.now().isoformat(timespec="seconds"), correo),
         )
         evento = "crear_usuario" if creado_por else "registro_ok"
         auditoria(
@@ -309,11 +335,14 @@ def crear_usuario(
             conn=conn,
         )
         uid = int(cur.lastrowid)
-    return {"id": uid, "username": user, "rol": rol, "activo": True}
+    return {"id": uid, "username": user, "rol": rol, "activo": True, "email": correo}
 
 
-def registrar_usuario_publico(username: str, password: str, ip: str, user_agent: str) -> dict:
-    """Alta abierta: cualquier companero se crea una cuenta de cliente."""
+def registrar_usuario_publico(
+    username: str, password: str, ip: str, user_agent: str, email: str = ""
+) -> dict:
+    """Alta abierta: cualquier companero se crea una cuenta de cliente con correo."""
+    correo = validar_email_registro(email)
     inicializar()
     ahora = time.time()
     with _WRITE_LOCK, conexion() as conn:
@@ -326,7 +355,7 @@ def registrar_usuario_publico(username: str, password: str, ip: str, user_agent:
             auditoria("registro_bloqueado", ip=ip, user_agent=user_agent,
                       detalle="limite de registros por hora", conn=conn)
             raise AuthError("demasiados registros desde esta IP; intenta mas tarde")
-    return crear_usuario(username, password, "cliente", ip, user_agent)
+    return crear_usuario(username, password, "cliente", ip, user_agent, email=correo)
 
 
 def cambiar_rol(user_id: int, rol: str, admin_user: str, ip: str = "", user_agent: str = "") -> dict:
@@ -388,7 +417,7 @@ def login(username: str, password: str, ip: str = "", user_agent: str = "") -> d
             raise AuthError("demasiados intentos fallidos; espera unos minutos")
 
         fila = conn.execute(
-            "SELECT id, username, password_hash, rol, activo FROM usuarios WHERE username = ?",
+            "SELECT id, username, password_hash, rol, activo, email FROM usuarios WHERE username = ?",
             (user,),
         ).fetchone()
         if fila is None or not fila["activo"] or not verify_password(password or "", fila["password_hash"]):
@@ -412,7 +441,12 @@ def login(username: str, password: str, ip: str = "", user_agent: str = "") -> d
         )
         auditoria("login_ok", usuario=fila["username"], rol=fila["rol"], ip=ip,
                   user_agent=user_agent, conn=conn)
-    return {"token": token, "username": fila["username"], "rol": fila["rol"]}
+    return {
+        "token": token,
+        "username": fila["username"],
+        "rol": fila["rol"],
+        "email": fila["email"],
+    }
 
 
 def get_session(token: str | None) -> dict | None:
@@ -423,7 +457,7 @@ def get_session(token: str | None) -> dict | None:
     ahora = time.time()
     with conexion() as conn:
         fila = conn.execute(
-            "SELECT u.id, u.username, u.rol, u.activo, s.expira_ts, s.creado_en, s.ip "
+            "SELECT u.id, u.username, u.rol, u.activo, u.email, s.expira_ts, s.creado_en, s.ip "
             "FROM sesiones s JOIN usuarios u ON u.id = s.usuario_id "
             "WHERE s.token_hash = ?",
             (token_hash,),
@@ -437,6 +471,7 @@ def get_session(token: str | None) -> dict | None:
         "id": fila["id"],
         "username": fila["username"],
         "rol": fila["rol"],
+        "email": fila["email"],
         "token_hash": token_hash,
         "creado_en": fila["creado_en"],
         "ip": fila["ip"],

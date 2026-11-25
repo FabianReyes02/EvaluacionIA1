@@ -36,7 +36,13 @@ from agent.llm_client import (
 )
 from agent.memory import LongTermMemory, get_session
 from agent.prompts import SYSTEM_PROMPT, build_context_block
-from agent.tools import ALL_TOOLS, get_inventory
+from agent.tools import (
+    ALL_TOOLS,
+    correo_de_sesion,
+    get_inventory,
+    liberar_correo_sesion,
+    usar_correo_sesion,
+)
 from agent.trace import log_trace, steps_from_messages
 from tools.email_sender import get_email_config
 from tools.inventory_lookup import (
@@ -114,6 +120,13 @@ def _messages_for(agent_input: str, session_id: str) -> list:
         memoria=LongTermMemory.recent_context(),
         historial=get_session(session_id).summary(),
     )
+    correo = correo_de_sesion()
+    if correo:
+        context += (
+            f"\n\nCorreo electrónico del cliente autenticado: {correo}. "
+            "Cuando pida enviar la cotización, usa esa dirección como destinatario "
+            "sin pedírsela ni inventar otra."
+        )
     history = get_session(session_id).as_messages()
     return [SystemMessage(content=context), *history, HumanMessage(content=agent_input)]
 
@@ -231,7 +244,7 @@ def _fallback(user_input: str) -> str:
     )
 
 
-def run(
+def _run(
     agent_input: str, session_id: str = "default", max_retry_wait_s: float | None = None
 ) -> dict:
     """Ejecuta una interaccion completa del agente y devuelve el resultado."""
@@ -325,6 +338,24 @@ def run(
         "rate_limited": rate_limited,
         "limite_diario": limite_diario,
     }
+
+
+def run(
+    agent_input: str,
+    session_id: str = "default",
+    max_retry_wait_s: float | None = None,
+    destinatario: str = "",
+) -> dict:
+    """Igual que ``_run``, con el correo de la cuenta logueada por petición.
+
+    La variable de contexto se limpia siempre, incluso si falla la llamada, para
+    que dos chats concurrentes no compartan destinatario.
+    """
+    token = usar_correo_sesion(destinatario)
+    try:
+        return _run(agent_input, session_id, max_retry_wait_s)
+    finally:
+        liberar_correo_sesion(token)
 
 
 def health(detailed: bool = True) -> dict:

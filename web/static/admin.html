@@ -49,6 +49,7 @@
     <h2>Crear usuario</h2>
     <form class="inline" id="newUser">
       <label>Usuario<input id="nu-user" required></label>
+      <label>Correo<input id="nu-email" inputmode="email" required placeholder="probador1@lab"></label>
       <label>Contraseña<input id="nu-pass" type="password" required placeholder="mínimo 10 caracteres"></label>
       <label>Rol<select id="nu-rol"><option value="cliente">cliente</option><option value="admin">admin</option></select></label>
       <button type="submit">Crear cuenta</button>
@@ -60,7 +61,7 @@
     <section class="card">
       <h2>Usuarios</h2>
       <div class="scroll"><table>
-        <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Creado</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>Usuario</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Creado</th><th>Acciones</th></tr></thead>
         <tbody id="users"></tbody>
       </table></div>
     </section>
@@ -119,6 +120,7 @@ async function loadUsers() {
   const d = await api("/api/admin/usuarios");
   $("users").innerHTML = d.usuarios.map(u => `<tr>
     <td><b>${esc(u.username)}</b></td>
+    <td>${esc(u.email)}</td>
     <td><span class="pill ${esc(u.rol)}">${esc(u.rol)}</span></td>
     <td><span class="pill ${u.activo ? 'ok' : 'bad'}">${u.activo ? 'activo' : 'inactivo'}</span></td>
     <td>${esc(u.creado_en)}</td>
@@ -188,10 +190,11 @@ $("newUser").addEventListener("submit", async e => {
   e.preventDefault(); $("newMsg").textContent = "";
   try {
     await jsonApi("/api/admin/usuarios", "POST", {
-      username: $("nu-user").value, password: $("nu-pass").value, rol: $("nu-rol").value
+      username: $("nu-user").value, password: $("nu-pass").value,
+      rol: $("nu-rol").value, email: $("nu-email").value.trim()
     });
     $("newMsg").textContent = "Cuenta creada.";
-    $("nu-user").value = ""; $("nu-pass").value = "";
+    $("nu-user").value = ""; $("nu-email").value = ""; $("nu-pass").value = "";
     await loadUsers();
   } catch (err) { $("newMsg").textContent = err.message; }
 });

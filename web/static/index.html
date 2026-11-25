@@ -184,6 +184,7 @@ async function loadMe() {
   try {
     const me = await api("/api/me");
     $("userbox").innerHTML = `${esc(me.usuario)} · ${esc(me.rol)}` +
+      (me.email ? ` · ${esc(me.email)}` : "") +
       (me.rol === "admin" ? ` · <a href="/admin">admin</a>` : "");
   } catch (e) { /* api() ya redirige al login */ }
 }

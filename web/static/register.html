@@ -32,6 +32,8 @@
   <form id="form">
     <label for="username">Usuario</label>
     <input id="username" name="username" autocomplete="username" required placeholder="3-32 caracteres">
+    <label for="email">Correo electrónico</label>
+    <input id="email" name="email" inputmode="email" autocomplete="email" required placeholder="probador1@lab">
     <label for="password">Contraseña</label>
     <input id="password" name="password" type="password" autocomplete="new-password" required placeholder="mínimo 10 caracteres">
     <label for="confirm">Repetir contraseña</label>
@@ -58,7 +60,10 @@ $("form").addEventListener("submit", async (e) => {
     const res = await fetch("/api/register", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({username: $("username").value, password: $("password").value})
+      body: JSON.stringify({
+        username: $("username").value, password: $("password").value,
+        email: $("email").value.trim()
+      })
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));

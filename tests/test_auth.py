@@ -53,7 +53,9 @@ def test_bootstrap_admin_desde_env():
 def test_registro_abierto_crea_cliente_y_login():
     _limpiar()
     auth.crear_usuario("admin_prueba", "ClavePrueba123!", "admin")
-    nuevo = auth.registrar_usuario_publico("companero", "ClaveCompanero123!", "10.0.0.1", "pytest")
+    nuevo = auth.registrar_usuario_publico(
+        "companero", "ClaveCompanero123!", "10.0.0.1", "pytest", email="companero@lab"
+    )
     assert nuevo["rol"] == "cliente" and nuevo["activo"] is True
     sesion = auth.login("companero", "ClaveCompanero123!", "10.0.0.1", "pytest")
     assert sesion["rol"] == "cliente" and len(sesion["token"]) > 30
@@ -84,7 +86,9 @@ def test_login_rechaza_clave_mala_y_bloquea_tras_intentos():
 def test_admin_puede_ver_y_cerrar_sesiones_y_eliminar_usuarios():
     _limpiar()
     auth.crear_usuario("admin_prueba", "ClavePrueba123!", "admin")
-    auth.registrar_usuario_publico("cliente1", "ClaveCliente123!", "10.0.0.3", "pytest")
+    auth.registrar_usuario_publico(
+        "cliente1", "ClaveCliente123!", "10.0.0.3", "pytest", email="cliente1@lab"
+    )
     s = auth.login("cliente1", "ClaveCliente123!", "10.0.0.3", "pytest")
     sesiones = auth.sesiones_activas()
     assert len(sesiones) == 1 and sesiones[0]["username"] == "cliente1"
@@ -102,9 +106,62 @@ def test_admin_puede_ver_y_cerrar_sesiones_y_eliminar_usuarios():
 def test_cambio_de_rol_y_auditoria_no_guarda_passwords():
     _limpiar()
     auth.crear_usuario("admin_prueba", "ClavePrueba123!", "admin")
-    u = auth.registrar_usuario_publico("cliente2", "ClaveCliente123!", "10.0.0.4", "pytest")
+    u = auth.registrar_usuario_publico(
+        "cliente2", "ClaveCliente123!", "10.0.0.4", "pytest", email="cliente2@lab"
+    )
     auth.cambiar_rol(u["id"], "admin", "admin_prueba")
     assert any(x["rol"] == "admin" for x in auth.listar_usuarios() if x["username"] == "cliente2")
     texto = str(auth.eventos_recientes(limite=500))
     assert "ClaveCliente123!" not in texto
     assert "ClavePrueba123!" not in texto
+
+
+def test_correo_de_registro_se_guarda_y_expone_en_la_sesion():
+    _limpiar()
+    auth.crear_usuario("admin_prueba", "ClavePrueba123!", "admin")
+    nuevo = auth.registrar_usuario_publico(
+        "probador", "ClaveProbador123!", "10.0.0.9", "pytest", email="probador1@lab"
+    )
+    assert nuevo["email"] == "probador1@lab"
+    assert any(u["email"] == "probador1@lab" for u in auth.listar_usuarios())
+    sesion = auth.login("probador", "ClaveProbador123!", "10.0.0.9", "pytest")
+    assert sesion["email"] == "probador1@lab"
+    assert auth.get_session(sesion["token"])["email"] == "probador1@lab"
+
+
+def test_registro_exige_correo_y_acepta_direcciones_de_prueba():
+    _limpiar()
+    auth.crear_usuario("admin_prueba", "ClavePrueba123!", "admin")
+    assert auth.validar_email_registro("probador1@lab") == "probador1@lab"
+    for correo in ("", "sin-arroba", "a@b@c", "a b@c", "a@<b>"):
+        try:
+            auth.validar_email_registro(correo)
+            raise AssertionError(f"debió rechazar {correo!r}")
+        except auth.AuthError:
+            pass
+    try:
+        auth.registrar_usuario_publico("sinmail", "ClaveSinMail123!", "10.0.0.9", "pytest")
+        raise AssertionError("el registro público debió exigir correo")
+    except auth.AuthError as exc:
+        assert "correo" in str(exc).lower()
+
+
+def test_migracion_de_bd_antigua_anade_la_columna_email():
+    _limpiar()
+    with auth.conexion() as conn:
+        conn.execute("DROP TABLE usuarios")
+        conn.execute(
+            "CREATE TABLE usuarios ("
+            "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+            "username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, "
+            "rol TEXT NOT NULL CHECK (rol IN ('cliente','admin')), "
+            "activo INTEGER NOT NULL DEFAULT 1, creado_en TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO usuarios (username, password_hash, rol, activo, creado_en) "
+            "VALUES ('viejo', 'x', 'cliente', 1, '2026-01-01')"
+        )
+    auth.inicializar()  # migra sin perder al usuario existente
+    assert any(u["username"] == "viejo" and u["email"] == "" for u in auth.listar_usuarios())
+    auth.inicializar()  # idempotente
+    assert auth.validar_email_registro("nuevo@lab") == "nuevo@lab"

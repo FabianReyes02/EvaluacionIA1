@@ -121,15 +121,26 @@ def correo_configurado() -> bool:
 # Validacion
 # --------------------------------------------------------------------------
 def validar_email(direccion: str) -> tuple[bool, str]:
-    """Valida la forma de una direccion. Devuelve (ok, motivo_del_error)."""
+    """Valida la forma de una direccion. Devuelve (ok, motivo_del_error).
+
+    Con SMTP real se exige un correo con dominio y TLD. En modo ``dry`` (o con
+    ``EMAIL_ALLOW_TEST_ADDRESSES=1``) se aceptan direcciones de prueba como
+    ``probador1@lab``: no salen a internet, solo quedan en el ``.eml``.
+    """
     direccion = (direccion or "").strip()
     if not direccion:
         return False, "no se indico ninguna direccion de correo"
     if len(direccion) > 254 or ".." in direccion or direccion.startswith("@"):
         return False, f"'{direccion}' no es una direccion de correo valida"
-    if not EMAIL_RE.match(direccion):
-        return False, f"'{direccion}' no es una direccion de correo valida"
-    return True, ""
+    if EMAIL_RE.match(direccion):
+        return True, ""
+    permitir_prueba = (
+        get_email_config()["modo"] == "dry"
+        or (os.getenv("EMAIL_ALLOW_TEST_ADDRESSES") or "").strip().lower() in ("1", "true", "yes")
+    )
+    if permitir_prueba and re.fullmatch(r"[^@\s<>]+@[^@\s<>]+", direccion):
+        return True, ""
+    return False, f"'{direccion}' no es una direccion de correo valida"
 
 
 def dominio_permitido(direccion: str, dominios: list[str]) -> bool:

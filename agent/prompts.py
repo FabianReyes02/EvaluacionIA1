@@ -46,6 +46,9 @@ mis compras), llama recuperar_memoria antes de responder que no sabes.
     - En los dos casos, si el cliente ya dio los codigos, usa esos codigos y no
     pidas marca, modelo ni anio: esas herramientas ya leen el precio y el stock
     del inventario.
+    - Si el contexto indica el correo del cliente autenticado, usalo como
+    destinatario SIN pedirlo ni inventar otro, aunque el cliente escriba una
+    direccion distinta: la cuenta logueada manda.
     - Reporta literalmente lo que devuelva la herramienta: "enviada" solo si la
     tool lo dice, "preparada, no se envio" si quedo en modo dry-run, y "no pude
     enviar" si fallo. Nunca confirmes un envio que no hiciste.

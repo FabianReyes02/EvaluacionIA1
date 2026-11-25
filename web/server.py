@@ -245,7 +245,9 @@ class Handler(BaseHTTPRequestHandler):
             if user is None:
                 return self._deny(user)
             if path == "/api/me":
-                return self._json({"usuario": user["username"], "rol": user["rol"]})
+                return self._json({
+                    "usuario": user["username"], "rol": user["rol"], "email": user.get("email", "")
+                })
             if path == "/api/inventory" and user["rol"] == "admin":
                 try:
                     return self._json({"parts": load_inventory()})
@@ -286,7 +288,8 @@ class Handler(BaseHTTPRequestHandler):
                     )
                 else:
                     auth.registrar_usuario_publico(
-                        data.get("username"), data.get("password"), ip, ua
+                        data.get("username"), data.get("password"), ip, ua,
+                        email=data.get("email"),
                     )
                     return self._json({"ok": True, "mensaje": "cuenta creada; ya puedes iniciar sesion"})
             except auth.AuthError as exc:
@@ -318,6 +321,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/admin/usuarios":
             try:
+                if not str(data.get("email") or "").strip():
+                    return self._json({"error": "indica un correo electrónico"}, 400)
                 creado = auth.crear_usuario(
                     data.get("username"),
                     data.get("password"),
@@ -325,6 +330,7 @@ class Handler(BaseHTTPRequestHandler):
                     ip,
                     ua,
                     creado_por=user["username"],
+                    email=data.get("email"),
                 )
                 return self._json({"ok": True, "usuario": creado})
             except auth.AuthError as exc:
@@ -380,6 +386,7 @@ class Handler(BaseHTTPRequestHandler):
                 message,
                 session_id=f"u{user['id']}:{session}",
                 max_retry_wait_s=WEB_RETRY_WAIT_S,
+                destinatario=user.get("email", ""),
             )
             registrar_resultado(
                 bool(resultado.get("rate_limited")), bool(resultado.get("limite_diario"))

@@ -8,6 +8,7 @@ Uso (desde la raiz del proyecto, con el entorno virtual activo):
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import socket
@@ -400,3 +401,25 @@ def test_el_correo_adjunta_la_cotizacion_en_pdf(monkeypatch):
 
     texto = mensaje.get_body(preferencelist=("plain",)).get_content()
     assert "Se adjunta el documento en formato PDF" in texto
+
+
+def test_el_envio_usa_el_correo_de_la_cuenta_logueada(monkeypatch):
+    monkeypatch.setenv("EMAIL_MODE", "dry")
+    monkeypatch.setenv("EMAIL_DOMAINS_ALLOWLIST", "")
+    token = agent_tools.usar_correo_sesion("probador1@lab")
+    try:
+        respuesta = agent_tools.enviar_cotizacion_email.invoke(
+            {
+                "codigos": ["ALT-01"],
+                "email_cliente": "otra-direccion@ejemplo.com",
+                "cliente": "Ana",
+            }
+        )
+    finally:
+        agent_tools.liberar_correo_sesion(token)
+
+    assert "probador1@lab" in respuesta
+    assert "otra-direccion@ejemplo.com" not in respuesta
+    registro = json.loads((TMP / "exports" / "envios.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+    assert registro["destinatario"] == "probador1@lab"
+    assert agent_tools.correo_de_sesion() == ""  # no se filtra entre peticiones

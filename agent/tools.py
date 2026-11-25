@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 
@@ -34,6 +35,24 @@ from tools.inventory_lookup import (
 from tools.pdf_cotizacion import guardar_pdf
 
 EXPORT_DIR = Path(os.getenv("EXPORTS_DIR") or (ROOT / "data" / "exports"))
+
+# Correo de la cuenta logueada, por petición. Las tools de envío lo prefieren
+# siempre por encima de lo que el modelo haya escrito en el chat.
+_CORREO_SESION: ContextVar[str] = ContextVar("correo_sesion", default="")
+
+
+def usar_correo_sesion(correo: str):
+    """Activa el correo de la sesión y devuelve el token para restaurarlo."""
+    return _CORREO_SESION.set((correo or "").strip())
+
+
+def liberar_correo_sesion(token) -> None:
+    _CORREO_SESION.reset(token)
+
+
+def correo_de_sesion() -> str:
+    return _CORREO_SESION.get()
+
 
 _inventory_cache: list[dict] | None = None
 
@@ -317,10 +336,15 @@ def enviar_cotizacion_email(
     un archivo .eml y NO se sale a internet: en ese caso informa que quedo
     preparada, jamas que fue enviada.
 
-    Si el cliente no dio su direccion de correo, NO la inventes ni la deduzcas:
-    pídela primero y despues llama esta herramienta.
+    Si hay un usuario logueado, la herramienta usa SIEMPRE el correo guardado
+    en su cuenta como destino (ignora otra direccion que aparezca en el chat).
+    Si no hay usuario logueado y el cliente no dio su direccion, NO la inventes
+    ni la deduzcas: pídela primero y despues llama esta herramienta.
     """
-    ok, motivo = validar_email(email_cliente)
+    # Si hay un usuario logueado, su correo es el destino: no se pide ni se
+    # deduce del mensaje, aunque el modelo haya escrito otra dirección.
+    email_destino = correo_de_sesion() or email_cliente
+    ok, motivo = validar_email(email_destino)
     if not ok:
         return (
             f"No puedo enviar la cotizacion por correo: {motivo}. "
@@ -338,7 +362,7 @@ def enviar_cotizacion_email(
     _, pdf_path = _guardar_cotizacion(documento, vehiculo)
     resultado = enviar_cotizacion_documento(
         documento,
-        email_cliente.strip(),
+        email_destino.strip(),
         vehiculo=vehiculo,
         mensaje=mensaje,
         adjunto=pdf_path.read_bytes(),
@@ -352,17 +376,18 @@ def enviar_cotizacion_email(
 
     if resultado["enviado"]:
         return (
-            f"Cotizacion ENVIADA a {email_cliente.strip()} con {items} item(s) "
+            f"Cotizacion ENVIADA a {email_destino.strip()} con {items} item(s) "
             f"por ${total}, adjunta en PDF.{detalle_avisos} (Copia en {pdf_path})"
         )
     if resultado["ruta"]:
         return (
-            f"Cotizacion PREPARADA, NO se envio: {resultado['detalle']} "
+            f"Cotizacion PREPARADA, NO se envio a {email_destino.strip()}: "
+            f"{resultado['detalle']} "
             f"Contiene {items} item(s) por ${total} en PDF.{detalle_avisos} "
             "Informa al cliente que quedo lista y pendiente de envio."
         )
     return (
-        f"No pude enviar la cotizacion a {email_cliente.strip()}: "
+        f"No pude enviar la cotizacion a {email_destino.strip()}: "
         f"{resultado['detalle']} La cotizacion quedo guardada en {pdf_path}."
         f"{detalle_avisos}"
     )
@@ -485,8 +510,9 @@ def registrar_venta(
         f"${total}.\n{detalle_stock}\nStock actualizado en la base de datos interna."
     )
 
-    if enviar_comprobante and email_cliente:
-        ok, motivo = validar_email(email_cliente)
+    email_destino = correo_de_sesion() or email_cliente
+    if enviar_comprobante and email_destino:
+        ok, motivo = validar_email(email_destino)
         if not ok:
             return f"{mensaje} No envie el comprobante: {motivo}."
         documento = {
@@ -516,7 +542,7 @@ def registrar_venta(
         _, pdf_path = _guardar_cotizacion(documento, vehiculo)
         resultado = enviar_cotizacion_documento(
             documento,
-            email_cliente.strip(),
+            email_destino.strip(),
             vehiculo=vehiculo,
             mensaje=f"Comprobante de la venta {venta['referencia']}.",
             adjunto=pdf_path.read_bytes(),
@@ -524,7 +550,7 @@ def registrar_venta(
         )
         if resultado["enviado"]:
             return (
-                f"{mensaje}\nComprobante ENVIADO a {email_cliente.strip()} "
+                f"{mensaje}\nComprobante ENVIADO a {email_destino.strip()} "
                 "(adjunto en PDF)."
             )
         if resultado["ruta"]:
