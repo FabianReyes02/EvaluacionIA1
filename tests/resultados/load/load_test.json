@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-11-24T23:15:54",
-  "url": "http://34.201.171.124",
+  "timestamp": "2026-11-24T23:35:32",
+  "url": "https://34.201.171.124",
   "usuarios": 10,
   "consultas_por_usuario": 2,
   "total_consultas": 20,
@@ -8,8 +8,8 @@
     "200": 20
   },
   "respuestas_503_controladas": 0,
-  "latencia_p50_s": 15.346,
-  "latencia_p95_s": 88.85,
+  "latencia_p50_s": 15.494,
+  "latencia_p95_s": 40.286,
   "permisos": {
     "anon_inventory": 401,
     "anon_root": 200,
