@@ -125,7 +125,7 @@ CHAT_RATE_LIMIT_PER_MIN="20"
 WEB_RETRY_WAIT_S="5"
 AGENT_CIRCUIT_THRESHOLD="3"
 AGENT_CIRCUIT_COOLDOWN_S="30"
-REPUSTOS_HTTPS="0"
+REPUSTOS_HTTPS="1"
 REPUSTOS_ALLOWED_ORIGIN=""
 ```
 
@@ -147,12 +147,16 @@ solas** después del reboot.
 
 ### 5. Comprobación desde tu máquina
 
-```powershell
-curl.exe -s http://IP_NUEVA/api/health
-curl.exe -s -o NUL -w 'HTTP %{http_code}\n' http://IP_NUEVA/
+El servicio está en **HTTPS** con certificado autofirmado: usa `https://` y
+`-k` en curl (o acepta el aviso del navegador una vez).
 
+```powershell
+curl.exe -sk https://IP_NUEVA/api/health
+curl.exe -sk -o NUL -w 'HTTP %{http_code}\n' https://IP_NUEVA/
+
+[System.Net.ServicePointManager]::ServerCertificateValidationCallback = {$true}
 $body = [Text.Encoding]::UTF8.GetBytes('{"message":"¿Qué alternador recomiendas para Suzuki Swift 2014?","session":"check"}')
-Invoke-RestMethod -Uri 'http://IP_NUEVA/api/chat' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 180 |
+Invoke-RestMethod -Uri 'https://IP_NUEVA/api/chat' -Method Post -ContentType 'application/json' -Body $body -TimeoutSec 180 |
   Select-Object respuesta, used_llm, modelo, reintentos | ConvertTo-Json -Depth 5
 ```
 

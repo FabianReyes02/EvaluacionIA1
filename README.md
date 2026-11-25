@@ -103,6 +103,12 @@ tiene `/admin` con: alta/gestión de usuarios, sesiones activas (se pueden
 cerrar), auditoría de los últimos 30 días y el inventario con alertas de
 stock. El cliente **no** ve inventario ni el panel.
 
+El despliegue en AWS sirve la interfaz por **HTTPS** (`https://<IP>/`): HTTP
+redirige a HTTPS, la cookie de sesión viaja con `Secure` y se envía HSTS.
+Mientras no haya un dominio con ACME se usa un certificado **autofirmado**
+(generado con `deploy/generar_certificado_autofirmado.sh`), así que el navegador
+mostrará una advertencia que hay que aceptar una vez.
+
 El servidor limita los chats concurrentes (`MAX_CONCURRENT_CHATS=3`), los hace
 esperar hasta `CHAT_QUEUE_WAIT_S=15` y, si sigue saturado, **degrada con
 elegancia**: responde `200` con búsqueda directa en el CSV (`modo_sin_ia: true`,

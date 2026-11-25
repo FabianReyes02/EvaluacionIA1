@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+import time
+import uuid
 from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
@@ -52,6 +55,33 @@ def liberar_correo_sesion(token) -> None:
 
 def correo_de_sesion() -> str:
     return _CORREO_SESION.get()
+
+
+# Sesión actual, para pendientes de confirmación de escrituras sensibles.
+_ID_SESION: ContextVar[str] = ContextVar("id_sesion", default="")
+
+
+def usar_id_sesion(sesion_id) -> str:
+    return _ID_SESION.set(str(sesion_id or ""))
+
+
+def liberar_id_sesion(token) -> None:
+    _ID_SESION.reset(token)
+
+
+def id_sesion() -> str:
+    return _ID_SESION.get()
+
+
+_PENDIENTES: dict[str, dict] = {}
+_PENDIENTES_LOCK = threading.Lock()
+CONFIRMACION_TTL_S = int(os.getenv("VENTA_CONFIRMACION_TTL_S") or 300)
+
+
+def _limpiar_pendientes(ahora: float) -> None:
+    for sid, pend in list(_PENDIENTES.items()):
+        if ahora - pend["creado"] > CONFIRMACION_TTL_S:
+            _PENDIENTES.pop(sid, None)
 
 
 _inventory_cache: list[dict] | None = None
@@ -404,6 +434,8 @@ def registrar_venta(
     email_cliente: str = "",
     vehiculo: str = "",
     enviar_comprobante: bool = False,
+    confirmado: bool = False,
+    token: str = "",
 ) -> str:
     """Registra una VENTA real: descuenta el stock del inventario del cliente.
 
@@ -418,7 +450,32 @@ def registrar_venta(
     comprobante de la venta por correo.
 
     Devuelve la referencia de la venta, el total y como quedo el stock.
+
+    Doble confirmación: la primera llamada solo prepara la venta y devuelve un
+    token; NO descuenta stock. Solo se ejecuta al volver a llamar con
+    ``confirmado=True`` y ese token (vigencia de 5 minutos por defecto).
     """
+    sesion = id_sesion()
+    ahora = time.time()
+    with _PENDIENTES_LOCK:
+        _limpiar_pendientes(ahora)
+    if confirmado:
+        with _PENDIENTES_LOCK:
+            pend = _PENDIENTES.get(sesion)
+            if (
+                not pend
+                or pend["token"] != (token or "").strip()
+                or ahora - pend["creado"] > CONFIRMACION_TTL_S
+            ):
+                return (
+                    "No registre la venta: el token de confirmación no es válido o expiró. "
+                    "Llama de nuevo sin confirmado para prepararla."
+                )
+            codigos = list(pend["codigos"])
+            cantidades = list(pend["cantidades"])
+            cliente = pend.get("cliente") or cliente
+            vehiculo = pend.get("vehiculo") or vehiculo
+
     if not codigos:
         return (
             "No puedo registrar la venta: no indicaste ningun codigo de repuesto. "
@@ -467,6 +524,30 @@ def registrar_venta(
             + "\nInforma al cliente del stock real y no confirmes la venta."
         )
 
+    if not confirmado:
+        nuevo_token = uuid.uuid4().hex[:12]
+        detalle = ", ".join(
+            f"{item['codigo']} x{int(cantidad)}" for item, cantidad in zip(items, cantidades)
+        )
+        total_previo = sum(
+            int(item["precio"]) * int(cantidad) for item, cantidad in zip(items, cantidades)
+        )
+        with _PENDIENTES_LOCK:
+            _limpiar_pendientes(time.time())
+            _PENDIENTES[sesion] = {
+                "token": nuevo_token,
+                "codigos": [str(c) for c in codigos],
+                "cantidades": [int(c) for c in cantidades],
+                "cliente": cliente,
+                "vehiculo": vehiculo,
+                "creado": time.time(),
+            }
+        return (
+            f"Venta PREPARADA, NO registrada aún: {detalle} por ${formatear_precio(total_previo)}. "
+            f"Token de confirmación: {nuevo_token}. Pide al cliente que confirme y vuelve a "
+            "llamar con confirmado=true y ese token. No confirmes la venta todavía."
+        )
+
     try:
         from tools.db import registrar_venta as _registrar
 
@@ -489,6 +570,9 @@ def registrar_venta(
             f"No pude registrar la venta en la base de datos ({exc.__class__.__name__}: "
             f"{exc}). No confirmes la venta al cliente."
         )
+
+    with _PENDIENTES_LOCK:
+        _PENDIENTES.pop(sesion, None)
 
     try:
         from tools.db import stock_por_codigo

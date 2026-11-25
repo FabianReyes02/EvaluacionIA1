@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import secrets
 import sys
 import threading
 import time
@@ -64,11 +66,15 @@ _CHAT_SEMAPHORE = threading.BoundedSemaphore(MAX_CONCURRENT_CHATS)
 _READY = threading.Event()
 _RATE_LOCK = threading.Lock()
 _RATE_BUCKETS: dict[str, deque] = {}
-_CSP = (
-    "default-src 'self'; style-src 'self' 'unsafe-inline'; "
-    "script-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; "
-    "form-action 'self'; base-uri 'self'; frame-ancestors 'none'"
-)
+def _csp(nonce: str) -> str:
+    """CSP con nonce por respuesta: no hace falta 'unsafe-inline'."""
+    return (
+        "default-src 'self'; "
+        f"style-src 'self' 'nonce-{nonce}'; "
+        f"script-src 'self' 'nonce-{nonce}'; "
+        "img-src 'self' data:; connect-src 'self'; "
+        "form-action 'self'; base-uri 'self'; frame-ancestors 'none'"
+    )
 
 
 def _rate_ok(key: str, limit: int, window_s: float = 60) -> bool:
@@ -100,6 +106,18 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- infra ---------------------------------------------------------------
     def _send(self, status: int, body: bytes, content_type: str, extra_headers: dict | None = None):
+        nonce = secrets.token_urlsafe(16)
+        if content_type.startswith("text/html"):
+            texto = body.decode("utf-8", errors="replace")
+            texto = re.sub(
+                r"<script(?![^>]*\bnonce=)", f'<script nonce="{nonce}"', texto,
+                flags=re.IGNORECASE,
+            )
+            texto = re.sub(
+                r"<style(?![^>]*\bnonce=)", f'<style nonce="{nonce}"', texto,
+                flags=re.IGNORECASE,
+            )
+            body = texto.encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
@@ -107,7 +125,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", _CSP)
+        self.send_header("Content-Security-Policy", _csp(nonce))
         self.send_header("Vary", "Origin")
         if ALLOWED_ORIGIN and self.headers.get("Origin") == ALLOWED_ORIGIN:
             self.send_header("Access-Control-Allow-Origin", ALLOWED_ORIGIN)
@@ -172,6 +190,18 @@ class Handler(BaseHTTPRequestHandler):
 
     def _ua(self) -> str:
         return (self.headers.get("User-Agent") or "")[:200]
+
+    def _origin_ok(self) -> bool:
+        """Rechaza POST/PATCH/DELETE con Origin de otro sitio (CSRF)."""
+        origin = (self.headers.get("Origin") or "").strip()
+        if not origin:  # curl, scripts y peticiones server-to-server
+            return True
+        host = (self.headers.get("Host") or "").strip()
+        permitidos = {f"http://{host}", f"https://{host}"}
+        configurado = (os.getenv("REPUSTOS_ALLOWED_ORIGIN") or "").strip()
+        if configurado:
+            permitidos.add(configurado)
+        return origin.rstrip("/") in permitidos
 
     def _cookie_token(self) -> str | None:
         raw = self.headers.get("Cookie") or ""
@@ -286,6 +316,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?", 1)[0]
         ip, ua = self._client_ip(), self._ua()
+        if not self._origin_ok():
+            return self._json({"error": "origen no permitido"}, 403)
 
         if path in ("/api/login", "/api/register"):
             try:
@@ -404,6 +436,7 @@ class Handler(BaseHTTPRequestHandler):
                 session_id=f"u{user['id']}:{session}",
                 max_retry_wait_s=WEB_RETRY_WAIT_S,
                 destinatario=user.get("email", ""),
+                usuario_id=user["id"],
             )
             registrar_resultado(
                 bool(resultado.get("rate_limited")), bool(resultado.get("limite_diario"))
@@ -423,6 +456,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- PATCH / DELETE (admin) ----------------------------------------------
     def do_PATCH(self):
+        if not self._origin_ok():
+            return self._json({"error": "origen no permitido"}, 403)
         user = self._user()
         if user is None or user["rol"] != "admin":
             return self._deny(user, admin=True)
@@ -446,6 +481,8 @@ class Handler(BaseHTTPRequestHandler):
         return self._json({"error": "ruta no encontrada"}, 404)
 
     def do_DELETE(self):
+        if not self._origin_ok():
+            return self._json({"error": "origen no permitido"}, 403)
         user = self._user()
         if user is None or user["rol"] != "admin":
             return self._deny(user, admin=True)

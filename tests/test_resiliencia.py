@@ -70,6 +70,28 @@ def test_memoria_larga_no_crece_sin_limite(monkeypatch, tmp_path):
     assert "dato 4" in lineas[-1]
 
 
+def test_memoria_larga_esta_particionada_por_usuario(monkeypatch, tmp_path):
+    import types
+
+    rag_falso = types.ModuleType("agent.rag")
+    rag_falso.add_documents = lambda **kwargs: None
+    monkeypatch.setitem(sys.modules, "agent.rag", rag_falso)
+    monkeypatch.setattr(memory, "MEMORY_DIR", tmp_path)
+    monkeypatch.setattr(memory, "MEMORY_FILE", tmp_path / "memoria.jsonl")
+
+    t1 = memory.usar_usuario(11)
+    memory.LongTermMemory.record("secreto de once", categoria="vehiculo")
+    memory.liberar_usuario(t1)
+    t2 = memory.usar_usuario(22)
+    memory.LongTermMemory.record("dato de veintidos", categoria="vehiculo")
+    memory.liberar_usuario(t2)
+
+    uno = (tmp_path / "memoria_11.jsonl").read_text(encoding="utf-8")
+    dos = (tmp_path / "memoria_22.jsonl").read_text(encoding="utf-8")
+    assert "secreto de once" in uno and "dato de veintidos" not in uno
+    assert "dato de veintidos" in dos and "secreto de once" not in dos
+
+
 def test_chat_con_circuit_abierto_responde_200_y_no_503(monkeypatch):
     from web import server as webserver
 
@@ -102,6 +124,44 @@ def test_chat_con_circuit_abierto_responde_200_y_no_503(monkeypatch):
         assert code == 200
         assert data["saturado"] is True and data["retry_after"] == 7
         assert "ALT-01" in data["respuesta"]
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_csp_por_nonce_y_origen_cross_site_rechazado(monkeypatch):
+    from web import server as webserver
+
+    webserver.auth.inicializar()
+    webserver._READY.set()
+    httpd = webserver.RepuestosHTTPServer(("127.0.0.1", 0), webserver.Handler)
+    hilo = threading.Thread(target=httpd.serve_forever, daemon=True)
+    hilo.start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+    opener = build_opener()
+
+    def req(path, method="GET", headers=None, body=None):
+        r = Request(base + path, data=body, headers=headers or {}, method=method)
+        try:
+            with opener.open(r, timeout=20) as resp:
+                return resp.status, resp.headers, resp.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers, e.read()
+
+    try:
+        code, headers, body = req("/login")
+        csp = headers.get("Content-Security-Policy", "")
+        assert code == 200
+        assert "nonce-" in csp and "unsafe-inline" not in csp
+        html = body.decode("utf-8")
+        assert html.count("nonce=") >= 2  # <style> y <script>
+
+        code, _, _ = req(
+            "/api/login", "POST",
+            {"Content-Type": "application/json", "Origin": "http://evil.example"},
+            b'{"username":"x","password":"y"}',
+        )
+        assert code == 403
     finally:
         httpd.shutdown()
         httpd.server_close()

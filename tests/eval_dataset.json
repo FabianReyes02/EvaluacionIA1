@@ -194,13 +194,16 @@
       "id": "C17",
       "tipo": "venta",
       "descripcion": "El cliente confirma la compra: se registra la venta y baja el stock",
-      "entradas": ["Confirmo la compra del ALT-02, llévalo"],
+      "entradas": [
+        "Confirmo la compra del ALT-02, llévalo",
+        "Sí, confirmo la compra con el token que me diste"
+      ],
       "esperado": {
         "debe_usar_tool": ["registrar_venta"],
         "stock_baja": {"ALT-02": 1},
         "no_codigos_inventados": true
       },
-      "justificacion": "Tool de ESCRITURA en la base de datos interna: la venta descuenta el stock real (ALT-02 pasa de 4 a 3) y devuelve la referencia de la venta. El evaluador comprueba el stock antes y despues en la BD."
+      "justificacion": "Tool de ESCRITURA en la base de datos interna con doble confirmacion: la primera llamada solo prepara la venta (no descuenta stock) y devuelve un token; la segunda, con confirmado=true y ese token, descuenta el stock real (ALT-02 pasa de 4 a 3) y devuelve la referencia. El evaluador comprueba el stock antes y despues en la BD."
     },
     {
       "id": "C18",

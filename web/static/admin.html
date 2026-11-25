@@ -125,12 +125,12 @@ async function loadUsers() {
     <td><span class="pill ${u.activo ? 'ok' : 'bad'}">${u.activo ? 'activo' : 'inactivo'}</span></td>
     <td>${esc(u.creado_en)}</td>
     <td>
-      <select data-rol="${u.id}" onchange="setRol(${u.id}, this.value)">
+      <select data-rol-id="${u.id}">
         <option value="cliente" ${u.rol === 'cliente' ? 'selected' : ''}>cliente</option>
         <option value="admin" ${u.rol === 'admin' ? 'selected' : ''}>admin</option>
       </select>
-      <button class="ghost" onclick="setActivo(${u.id}, ${!u.activo})">${u.activo ? 'desactivar' : 'activar'}</button>
-      <button class="danger" onclick="delUser(${u.id})">eliminar</button>
+      <button class="ghost" data-activo-id="${u.id}" data-activo="${!u.activo}">${u.activo ? 'desactivar' : 'activar'}</button>
+      <button class="danger" data-del-id="${u.id}">eliminar</button>
     </td></tr>`).join("");
 }
 async function setRol(id, rol) {
@@ -152,7 +152,7 @@ async function loadSessions() {
     ? d.sesiones.map(s => `<tr><td><b>${esc(s.username)}</b></td>
         <td><span class="pill ${esc(s.rol)}">${esc(s.rol)}</span></td>
         <td>${esc(s.ip)}</td><td>${esc(s.creado_en)}</td><td>${esc(s.expira_en)}</td>
-        <td><button class="danger" onclick="closeSession('${esc(s.token_hash)}')">cerrar</button></td></tr>`).join("")
+        <td><button class="danger" data-close="${esc(s.token_hash)}">cerrar</button></td></tr>`).join("")
     : `<tr><td colspan="6" class="hint">No hay sesiones activas.</td></tr>`;
 }
 async function closeSession(hash) {
@@ -202,6 +202,19 @@ $("filters").addEventListener("submit", e => { e.preventDefault(); loadAudit(); 
 $("refresh").addEventListener("click", () => { loadUsers(); loadSessions(); loadAudit(); });
 $("logout").addEventListener("click", async () => {
   await api("/api/logout", {method:"POST"}); location.href = "/login";
+});
+
+// Eventos delegados: el CSP con nonce no permite manejadores inline (onclick=).
+document.addEventListener("change", e => {
+  const id = e.target.dataset && e.target.dataset.rolId;
+  if (id) setRol(Number(id), e.target.value);
+});
+document.addEventListener("click", e => {
+  const b = e.target.closest("button");
+  if (!b || !b.dataset) return;
+  if (b.dataset.activoId) setActivo(Number(b.dataset.activoId), b.dataset.activo === "true");
+  if (b.dataset.delId) delUser(Number(b.dataset.delId));
+  if (b.dataset.close) closeSession(b.dataset.close);
 });
 
 (async () => {

@@ -56,12 +56,15 @@ mis compras), llama recuperar_memoria antes de responder que no sabes.
 torque, instalacion, contenido de un kit) o menciona el manual tecnico, llama a \
 buscar_en_manual y responde con la cita de la fuente. No respondas de memoria: \
 el manual tecnico es la unica fuente valida de esas especificaciones.
-12. VENTAS: solo registras una venta cuando el cliente confirma la compra \
-("lo llevo", "confirmo", "proceda"). Cuando eso pase, llama a registrar_venta \
-con los codigos y las cantidades que pidio. Nunca afirmes que una venta quedo \
-registrada si no llamaste la herramienta, y nunca inventes una referencia de \
-venta. Despues de la llamada, informa la referencia (ej: "V-0001"), el total y \
-como quedo el stock.
+12. VENTAS (doble confirmacion): cuando el cliente quiera comprar, llama a \
+registrar_venta una PRIMERA vez con los codigos y cantidades. La herramienta \
+devuelve "Venta PREPARADA" y un token: NO digas que la venta esta registrada. \
+Muestra al cliente el detalle y el token y espera a que confirme explicitamente. \
+Solo cuando el cliente confirme, llama DE NUEVO a registrar_venta con \
+confirmado=true y token=<el token recibido>. Si el token expiro, prepara otra. \
+Nunca afirmes una venta registrada sin la segunda llamada, ni inventes una \
+referencia. Despues de la segunda llamada informa la referencia (ej: "V-0001"), \
+el total y como quedo el stock.
 13. RECOMENDACIONES: cuando el cliente pida que le recomiendes un repuesto \
 ("que me recomiendas para...", "que me conviene..."), llama a recomendar_repuesto \
 con marca, modelo y anio. No armes la recomendacion a mano: esa herramienta cruza \

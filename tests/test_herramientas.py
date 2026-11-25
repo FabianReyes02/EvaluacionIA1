@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import socket
 import socketserver
@@ -44,12 +45,14 @@ from tools import pdf_cotizacion  # noqa: E402
 
 def _limpiar_estado():
     """Deja la BD de prueba como recien sembrada y recarga el cache."""
+    # Primero se restaura el CSV (si una venta anterior bajó el stock) y
+    # después se siembra una BD nueva desde ese CSV limpio.
+    shutil.copyfile(ROOT / "data" / "internal" / "inventory.csv", CSV_TEST)
     for sufijo in ("", "-wal", "-shm"):
         ruta = Path(str(TMP / "tienda_test.db") + sufijo)
         if ruta.exists():
             ruta.unlink()
     db.inicializar()
-    shutil.copyfile(ROOT / "data" / "internal" / "inventory.csv", CSV_TEST)
     agent_tools.reload_inventory()
 
 
@@ -112,13 +115,29 @@ def test_el_csv_se_sincroniza_con_el_stock_real():
 # --------------------------------------------------------------------------
 def test_registrar_venta_devuelve_referencia_y_stock_antes_despues():
     _limpiar_estado()
+    preparada = agent_tools.registrar_venta.invoke({"codigos": ["ALT-02"], "cliente": "Ana"})
+    assert "PREPARADA" in preparada
+    assert db.stock_de("ALT-02") == 4  # la primera llamada NO descuenta stock
+    token = re.search(r"Token de confirmación: ([a-f0-9]+)", preparada).group(1)
+
     salida = agent_tools.registrar_venta.invoke(
-        {"codigos": ["ALT-02"], "cliente": "Ana"}
+        {"codigos": ["ALT-02"], "cliente": "Ana", "confirmado": True, "token": token}
     )
     assert "REGISTRADA" in salida
     assert "V-" in salida
     assert "stock 4 -> 3" in salida
     assert db.stock_de("ALT-02") == 3
+
+
+def test_registrar_venta_rechaza_token_de_confirmacion_invalido():
+    _limpiar_estado()
+    agent_tools.registrar_venta.invoke({"codigos": ["ALT-02"], "cliente": "Ana"})
+    salida = agent_tools.registrar_venta.invoke(
+        {"codigos": ["ALT-02"], "confirmado": True, "token": "token-falso"}
+    )
+    assert "No registre la venta" in salida
+    assert db.stock_de("ALT-02") == 4
+    assert db.ventas_recientes() == []
 
 
 def test_registrar_venta_rechaza_un_codigo_inexistente():

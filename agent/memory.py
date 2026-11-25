@@ -15,6 +15,7 @@ import os
 import threading
 import time
 import uuid
+from contextvars import ContextVar
 from datetime import datetime
 from pathlib import Path
 
@@ -37,6 +38,31 @@ SESSION_TTL_S = int(os.getenv("CHAT_SESSION_TTL_S") or 8 * 3600)
 MAX_SESSIONS = max(10, int(os.getenv("MAX_CHAT_SESSIONS") or 200))
 MAX_LONG_TERM_REGISTROS = max(50, int(os.getenv("MAX_MEMORIA_REGISTROS") or 500))
 _LONG_TERM_LOCK = threading.RLock()  # JSONL + indice semantico
+
+# La memoria de largo plazo se particiona por usuario autenticado: un cliente
+# no debe leer los hechos de otro ni inyectarlos en el prompt del siguiente.
+_USUARIO_ACTUAL: ContextVar[str] = ContextVar("usuario_actual", default="")
+
+
+def usar_usuario(usuario_id) -> str:
+    """Activa el usuario de la petición y devuelve el token para restaurarlo."""
+    return _USUARIO_ACTUAL.set(str(usuario_id or ""))
+
+
+def liberar_usuario(token) -> None:
+    _USUARIO_ACTUAL.reset(token)
+
+
+def _ruta_memoria() -> Path:
+    uid = _USUARIO_ACTUAL.get()
+    if not uid:
+        return MEMORY_FILE
+    return MEMORY_FILE.with_name(f"{MEMORY_FILE.stem}_{uid}{MEMORY_FILE.suffix}")
+
+
+def _coleccion_memoria() -> str:
+    uid = _USUARIO_ACTUAL.get()
+    return COL_MEMORY if not uid else f"{COL_MEMORY}_{uid}"
 
 
 # --------------------------------------------------------------------------
@@ -138,9 +164,10 @@ class LongTermMemory:
             "dato": dato,
             "origen": origen,
         }
+        ruta = _ruta_memoria()
         with _LONG_TERM_LOCK:
-            MEMORY_DIR.mkdir(parents=True, exist_ok=True)
-            with open(MEMORY_FILE, "a", encoding="utf-8") as f:
+            ruta.parent.mkdir(parents=True, exist_ok=True)
+            with open(ruta, "a", encoding="utf-8") as f:
                 f.write(json.dumps(registro, ensure_ascii=False) + "\n")
 
             # Indice semantico (si Chroma está disponible; el JSONL siempre queda).
@@ -148,7 +175,7 @@ class LongTermMemory:
                 from agent.rag import add_documents
 
                 add_documents(
-                    COL_MEMORY,
+                    _coleccion_memoria(),
                     ids=[registro["id"]],
                     documents=[dato],
                     metadatas=[{k: str(v) for k, v in registro.items() if k != "dato"}],
@@ -159,9 +186,9 @@ class LongTermMemory:
             # Tope de registros: el JSONL no crece sin límite en un servidor
             # que corre durante semanas.
             try:
-                lineas = MEMORY_FILE.read_text(encoding="utf-8").splitlines()
+                lineas = ruta.read_text(encoding="utf-8").splitlines()
                 if len(lineas) > MAX_LONG_TERM_REGISTROS:
-                    MEMORY_FILE.write_text(
+                    ruta.write_text(
                         "\n".join(lineas[-MAX_LONG_TERM_REGISTROS:]) + "\n",
                         encoding="utf-8",
                     )
@@ -175,7 +202,7 @@ class LongTermMemory:
         try:
             from agent.rag import search as chroma_search
 
-            hits = chroma_search(COL_MEMORY, consulta, k=k)
+            hits = chroma_search(_coleccion_memoria(), consulta, k=k)
         except Exception:
             hits = []
         if hits:
@@ -189,11 +216,12 @@ class LongTermMemory:
 
     @staticmethod
     def all() -> list[dict]:
+        ruta = _ruta_memoria()
         with _LONG_TERM_LOCK:
-            if not MEMORY_FILE.exists():
+            if not ruta.exists():
                 return []
             out = []
-            with open(MEMORY_FILE, encoding="utf-8") as f:
+            with open(ruta, encoding="utf-8") as f:
                 for line in f:
                     line = line.strip()
                     if line:

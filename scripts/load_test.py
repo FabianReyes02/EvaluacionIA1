@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import ssl
 import time
 import urllib.error
 import urllib.request
@@ -22,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from http.cookiejar import CookieJar
 from pathlib import Path
-from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.request import HTTPCookieProcessor, HTTPSHandler, Request, build_opener
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -31,7 +32,11 @@ class Client:
     def __init__(self, base: str):
         self.base = base.rstrip("/")
         self.jar = CookieJar()
-        self.opener = build_opener(HTTPCookieProcessor(self.jar))
+        handlers = [HTTPCookieProcessor(self.jar)]
+        # El despliegue usa un certificado autofirmado mientras no haya dominio.
+        if self.base.startswith("https://"):
+            handlers.append(HTTPSHandler(context=ssl._create_unverified_context()))
+        self.opener = build_opener(*handlers)
 
     def req(self, method: str, path: str, body: dict | None = None, timeout: int = 180):
         data = json.dumps(body).encode("utf-8") if body is not None else None

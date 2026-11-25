@@ -34,14 +34,16 @@ from agent.llm_client import (
     retry_delay_s,
     usage_from,
 )
-from agent.memory import LongTermMemory, get_session
+from agent.memory import LongTermMemory, get_session, liberar_usuario, usar_usuario
 from agent.prompts import SYSTEM_PROMPT, build_context_block
 from agent.tools import (
     ALL_TOOLS,
     correo_de_sesion,
     get_inventory,
     liberar_correo_sesion,
+    liberar_id_sesion,
     usar_correo_sesion,
+    usar_id_sesion,
 )
 from agent.trace import log_trace, steps_from_messages
 from tools.email_sender import get_email_config
@@ -345,17 +347,22 @@ def run(
     session_id: str = "default",
     max_retry_wait_s: float | None = None,
     destinatario: str = "",
+    usuario_id=None,
 ) -> dict:
-    """Igual que ``_run``, con el correo de la cuenta logueada por petición.
+    """Igual que ``_run``, con el contexto del usuario logueado por petición.
 
-    La variable de contexto se limpia siempre, incluso si falla la llamada, para
-    que dos chats concurrentes no compartan destinatario.
+    Las variables de contexto se limpian siempre, incluso si falla la llamada,
+    para que dos chats concurrentes no compartan destinatario ni memoria.
     """
-    token = usar_correo_sesion(destinatario)
+    token_correo = usar_correo_sesion(destinatario)
+    token_usuario = usar_usuario(usuario_id)
+    token_sesion = usar_id_sesion(session_id)
     try:
         return _run(agent_input, session_id, max_retry_wait_s)
     finally:
-        liberar_correo_sesion(token)
+        liberar_correo_sesion(token_correo)
+        liberar_usuario(token_usuario)
+        liberar_id_sesion(token_sesion)
 
 
 def fallback_result(

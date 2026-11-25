@@ -115,7 +115,20 @@ sudo systemctl restart nginx
 
 ## 8) TLS (recomendado)
 
-Usa **Certbot** (Let’s Encrypt) o un **ALB** con ACM. Ejemplo Certbot en Ubuntu:
+En el despliegue actual no hay dominio público, así que se usa un certificado
+**autofirmado** para la IP y Nginx redirige todo el tráfico HTTP a HTTPS:
+
+```bash
+bash deploy/generar_certificado_autofirmado.sh 34.201.171.124
+sudo cp deploy/nginx-repuestossur.conf /etc/nginx/conf.d/repuestossur.conf
+sudo nginx -t && sudo systemctl reload nginx
+# además, en .env: REPUSTOS_HTTPS="1"  y reiniciar repuestossur
+```
+
+El navegador avisará que el certificado es autofirmado; hay que aceptarlo una
+vez. Si más adelante se obtiene un dominio, usa **Certbot** (Let’s Encrypt) o un
+**ALB** con ACM y reemplaza las dos líneas `ssl_certificate*` del vhost.
+Ejemplo Certbot en Ubuntu:
 
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
