@@ -23,6 +23,7 @@ from __future__ import annotations
 import csv
 import os
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
@@ -30,6 +31,7 @@ from pathlib import Path
 from tools.inventory_lookup import INVENTORY_PATH, ROOT
 
 DEFAULT_DB_PATH = ROOT / "data" / "internal" / "tienda.db"
+_WRITE_LOCK = threading.RLock()  # serializa escrituras de stock/ventas
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS repuestos (
@@ -204,7 +206,7 @@ def stock_de(codigo: str) -> int | None:
     return int(fila["stock"]) if fila else None
 
 
-def registrar_venta(
+def _registrar_venta(
     items: list[dict],
     cliente: str = "",
     email: str = "",
@@ -324,7 +326,19 @@ def registrar_venta(
     }
 
 
-def ajustar_stock(codigo: str, delta: int, tipo: str = "reabastecimiento", nota: str = "") -> int:
+def registrar_venta(
+    items: list[dict],
+    cliente: str = "",
+    email: str = "",
+    vehiculo: str = "",
+    medio: str = "chat",
+) -> dict:
+    """Version segura para hilos de ``_registrar_venta``."""
+    with _WRITE_LOCK:
+        return _registrar_venta(items, cliente, email, vehiculo, medio)
+
+
+def _ajustar_stock(codigo: str, delta: int, tipo: str = "reabastecimiento", nota: str = "") -> int:
     """Suma (delta > 0) o resta stock de un codigo. Devuelve el stock final.
 
     Se usa para reponer mercaderia y paraRestablecer el inventario en las
@@ -357,6 +371,12 @@ def ajustar_stock(codigo: str, delta: int, tipo: str = "reabastecimiento", nota:
             conn.execute("ROLLBACK")
             raise
     return nuevo
+
+
+def ajustar_stock(codigo: str, delta: int, tipo: str = "reabastecimiento", nota: str = "") -> int:
+    """Version segura para hilos de ``_ajustar_stock``."""
+    with _WRITE_LOCK:
+        return _ajustar_stock(codigo, delta, tipo, nota)
 
 
 def ventas_recientes(limite: int = 10) -> list[dict]:

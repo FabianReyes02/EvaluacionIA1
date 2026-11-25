@@ -588,3 +588,39 @@ python tests/eval_agent.py
   trazas reales de una consulta (`ChatOpenAI`, `recomendar_repuesto`, `tools`,
   `model`) con fecha 2026-11-24 19:24 UTC. El token no se versiona: vive solo
   en los `.env` (gitignored) con permisos 600.
+
+## Actualización 2026-11-24 — Login, roles, auditoría y resiliencia concurrente
+
+Tras la evaluación con varios usuarios simultáneos (el agente se cayó) y el
+hallazgo de que cualquiera podía hacer `curl /api/inventory`, se cerró D18/D19:
+
+- **D18 — Seguridad web.** `web/auth.py` agrega usuarios con contraseña
+  hasheada (PBKDF2-SHA256, 210 000 iteraciones), **registro abierto de clientes**,
+  sesiones server-side (token aleatorio; solo su SHA-256 en SQLite), cookie
+  `HttpOnly; SameSite=Strict` (Secure si `REPUSTOS_HTTPS=1`), bloqueo de login
+  tras 5 fallos y auditoría con retención de **30 días** (`AUDIT_RETENTION_DAYS`).
+  El admin inicial se crea desde `ADMIN_USER`/`ADMIN_PASSWORD` en `.env` y se
+  guarda hasheado; el password nunca viaja en git. `web/server.py` aplica una
+  matriz única: público (`/login`, `/register`, `/api/login`, `/api/register`,
+  `/api/health` mínimo), autenticado (chat/reset/logout) y **solo admin**
+  (`/admin`, `/api/inventory`, `/api/admin/*`). CORS dejó de ser `*`, se agregó
+  CSP y se quitaron del health la ruta de Chroma, el modelo de embeddings y la
+  lista de herramientas.
+- **D19 — Concurrencia.** Cola acotada (`MAX_CONCURRENT_CHATS=3`) con espera de
+  hasta `CHAT_QUEUE_WAIT_S=15` y `503` + `retry_after` si no alcanza, en vez de
+  acumular hilos sin límite; rate limit por usuario/IP; circuit breaker ante
+  429 repetidos; backoff máximo de 5 s en la web (los evals mantienen el
+  backoff completo). Locks de doble chequeo en `agent/rag.py`
+  (cliente Chroma y embeddings), lock de reindexado, locks por sesión en
+  `agent/memory.py`, lock en `agent/trace.py` y serialización de escrituras en
+  `tools/db.py`. `preload()` calienta el índice al arrancar.
+- **Panel de administración** (`web/static/admin.html`): crear usuarios
+  (cliente/admin), ver/cambiar rol, activar/desactivar y **eliminar cuentas**;
+  ver **sesiones activas** y cerrarlas; tabla de **auditoría** filtrable; e
+  inventario. El cliente solo ve el chat (`index.html` sin pestaña de
+  inventario).
+- **Pruebas:** `tests/test_auth.py` (6 pruebas, verdes) y
+  `scripts/load_test.py` (registro+login de N usuarios, consultas paralelas,
+  matriz de permisos y latencia p50/p95; evidencia en
+  `tests/resultados/load/load_test.json`). `scripts/fuzz_api_web.py` actualizado
+  para la API autenticada.

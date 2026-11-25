@@ -11,6 +11,7 @@ modelo (~470MB) una sola vez.
 from __future__ import annotations
 
 import os
+import threading
 from pathlib import Path
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -32,16 +33,23 @@ CHUNK_OVERLAP = 50
 
 _client = None
 _embedding_fn = None
+_CLIENT_LOCK = threading.Lock()
+_EMBEDDING_LOCK = threading.Lock()
+# Serializa consultas e ingestas: ChromaDB no tolera dos escritores sobre el
+# mismo indice y el modelo de embeddings es pesado (~470 MB) y no concurrente.
+_INDEX_LOCK = threading.RLock()
 
 
 def get_client():
     """Cliente ChromaDB persistente (singleton: chromadb no permite dos para la misma ruta)."""
     global _client
     if _client is None:
-        import chromadb
+        with _CLIENT_LOCK:
+            if _client is None:
+                import chromadb
 
-        CHROMA_DIR.mkdir(parents=True, exist_ok=True)
-        _client = chromadb.PersistentClient(path=str(CHROMA_DIR))
+                CHROMA_DIR.mkdir(parents=True, exist_ok=True)
+                _client = chromadb.PersistentClient(path=str(CHROMA_DIR))
     return _client
 
 
@@ -49,10 +57,27 @@ def get_embedding_fn():
     """Funcion de embeddings local (se carga una sola vez por proceso)."""
     global _embedding_fn
     if _embedding_fn is None:
-        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+        with _EMBEDDING_LOCK:
+            if _embedding_fn is None:
+                from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
-        _embedding_fn = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
+                _embedding_fn = SentenceTransformerEmbeddingFunction(model_name=EMBEDDING_MODEL)
     return _embedding_fn
+
+
+def preload() -> None:
+    """Prepara cliente + embeddings + indice al arrancar el servidor web.
+
+    Evita que dos hilos carguen el modelo al mismo tiempo (OOM) y que la
+    primera peticion pague la descarga/carga de ~470 MB.
+    """
+    with _INDEX_LOCK:
+        get_client()
+        get_embedding_fn()
+        try:
+            ensure_index(force=False)
+        except Exception as exc:
+            print(f"[rag] no se pudo precalentar el indice: {exc.__class__.__name__}: {exc}")
 
 
 def get_collection(name: str):
@@ -60,6 +85,12 @@ def get_collection(name: str):
     return get_client().get_or_create_collection(
         name=name, embedding_function=get_embedding_fn(), metadata={"hnsw:space": "cosine"}
     )
+
+
+def add_documents(name: str, ids: list[str], documents: list[str], metadatas: list[dict]) -> None:
+    """Escritura serializada en Chroma (usada por la memoria y la ingesta)."""
+    with _INDEX_LOCK:
+        get_collection(name).add(ids=ids, documents=documents, metadatas=metadatas)
 
 
 def _split(text: str) -> list[str]:
@@ -77,7 +108,7 @@ def _borrar_coleccion(name: str) -> None:
         pass
 
 
-def ingest_manuales(force: bool = False) -> dict:
+def _ingest_manuales(force: bool = False) -> dict:
     """Indexa los PDF de ``data/external/manuales``. Idempotente salvo ``force``."""
     collection = get_collection(COL_MANUALS)
     if not force and collection.count() > 0:
@@ -117,7 +148,13 @@ def ingest_manuales(force: bool = False) -> dict:
     return {"coleccion": COL_MANUALS, "documentos": collection.count(), "nuevo": True}
 
 
-def ingest_inventario(force: bool = False) -> dict:
+def ingest_manuales(force: bool = False) -> dict:
+    """Version segura para hilos de ``_ingest_manuales``."""
+    with _INDEX_LOCK:
+        return _ingest_manuales(force=force)
+
+
+def _ingest_inventario(force: bool = False) -> dict:
     """Indexa las filas del CSV. Cada fila es un documento, sin partir (D4)."""
     collection = get_collection(COL_INVENTORY)
     if not force and collection.count() > 0:
@@ -151,6 +188,12 @@ def ingest_inventario(force: bool = False) -> dict:
     return {"coleccion": COL_INVENTORY, "documentos": collection.count(), "nuevo": True}
 
 
+def ingest_inventario(force: bool = False) -> dict:
+    """Version segura para hilos de ``_ingest_inventario``."""
+    with _INDEX_LOCK:
+        return _ingest_inventario(force=force)
+
+
 def ensure_index(force: bool = False) -> dict:
     """Garantiza que ambas colecciones existan y tengan datos."""
     return {
@@ -178,17 +221,20 @@ def search(collection: str, query: str, k: int = 4) -> list[dict]:
     query = (query or "").strip()
     if not query:
         return []
-    col = get_collection(collection)
-    if col.count() == 0:
-        return []
-    try:
-        res = col.query(query_texts=[query], n_results=min(k, col.count()))
-    except Exception as exc:
-        # Indice roto: se reindexa desde el origen y se reintenta una vez.
-        print(f"[rag] la consulta fallo ({exc.__class__.__name__}); reindexando '{collection}'...")
-        _reindexar(collection)
+    # Consulta + eventual reparacion bajo el mismo lock: dos hilos no pueden
+    # disparar dos reindexados simultaneos sobre el mismo indice.
+    with _INDEX_LOCK:
         col = get_collection(collection)
-        res = col.query(query_texts=[query], n_results=min(k, col.count()))
+        if col.count() == 0:
+            return []
+        try:
+            res = col.query(query_texts=[query], n_results=min(k, col.count()))
+        except Exception as exc:
+            # Indice roto: se reindexa desde el origen y se reintenta una vez.
+            print(f"[rag] la consulta fallo ({exc.__class__.__name__}); reindexando '{collection}'...")
+            _reindexar(collection)
+            col = get_collection(collection)
+            res = col.query(query_texts=[query], n_results=min(k, col.count()))
     out = []
     for doc, meta, dist in zip(
         res["documents"][0], res["metadatas"][0], res["distances"][0]

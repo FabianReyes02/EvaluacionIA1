@@ -31,6 +31,7 @@ MEMORY_FILE = Path(os.getenv("MEMORIA_FILE") or MEMORY_DIR / "memoria.jsonl")
 COL_MEMORY = os.getenv("MEMORIA_COLLECTION", "memoria")
 
 SHORT_TERM_WINDOW = 10  # turnos que se conservan en contexto (ventana deslizante)
+_LONG_TERM_LOCK = threading.RLock()  # JSONL + indice semantico
 
 
 # --------------------------------------------------------------------------
@@ -43,35 +44,43 @@ class ShortTermMemory:
         self.session_id = session_id
         self.window = window
         self._turns: list[dict] = []  # {"role": user|assistant|system, "content": str}
+        self._lock = threading.RLock()  # dos turnos de la misma sesion pueden llegar juntos
 
     def add(self, role: str, content: str) -> None:
         if not content:
             return
-        self._turns.append({"role": role, "content": content})
-        if len(self._turns) > self.window * 2:  # cada turno son 2 mensajes
-            self._turns = self._turns[-(self.window * 2):]
+        with self._lock:
+            self._turns.append({"role": role, "content": content})
+            if len(self._turns) > self.window * 2:  # cada turno son 2 mensajes
+                self._turns = self._turns[-(self.window * 2):]
 
     @property
     def turns(self) -> list[dict]:
-        return list(self._turns)
+        with self._lock:
+            return list(self._turns)
 
     def as_messages(self):
         """Convierte a mensajes de LangChain para inyectarlas en el agente."""
         mapping = {"user": HumanMessage, "assistant": AIMessage, "system": SystemMessage}
-        return [mapping.get(t["role"], HumanMessage)(content=t["content"]) for t in self._turns]
+        with self._lock:
+            snapshot = list(self._turns)
+        return [mapping.get(t["role"], HumanMessage)(content=t["content"]) for t in snapshot]
 
     def summary(self) -> str:
         """Resumen en texto del historial, para el system prompt."""
-        if not self._turns:
+        with self._lock:
+            recientes = list(self._turns[-6:])
+        if not recientes:
             return "(sin interacciones previas en esta sesion)"
         lines = []
-        for t in self._turns[-6:]:
+        for t in recientes:
             quien = "Cliente" if t["role"] == "user" else "Asistente"
             lines.append(f"{quien}: {t['content']}")
         return "\n".join(lines)
 
     def clear(self) -> None:
-        self._turns.clear()
+        with self._lock:
+            self._turns.clear()
 
 
 _SESSIONS: dict[str, ShortTermMemory] = {}
@@ -110,21 +119,23 @@ class LongTermMemory:
             "dato": dato,
             "origen": origen,
         }
-        MEMORY_DIR.mkdir(parents=True, exist_ok=True)
-        with open(MEMORY_FILE, "a", encoding="utf-8") as f:
-            f.write(json.dumps(registro, ensure_ascii=False) + "\n")
+        with _LONG_TERM_LOCK:
+            MEMORY_DIR.mkdir(parents=True, exist_ok=True)
+            with open(MEMORY_FILE, "a", encoding="utf-8") as f:
+                f.write(json.dumps(registro, ensure_ascii=False) + "\n")
 
-        # Indice semantico (si Chroma/está disponible; el JSONL siempre queda).
-        try:
-            from agent.rag import get_collection
+            # Indice semantico (si Chroma está disponible; el JSONL siempre queda).
+            try:
+                from agent.rag import add_documents
 
-            get_collection(COL_MEMORY).add(
-                ids=[registro["id"]],
-                documents=[dato],
-                metadatas=[{k: str(v) for k, v in registro.items() if k != "dato"}],
-            )
-        except Exception as exc:
-            registro["aviso_chroma"] = f"{exc.__class__.__name__}"
+                add_documents(
+                    COL_MEMORY,
+                    ids=[registro["id"]],
+                    documents=[dato],
+                    metadatas=[{k: str(v) for k, v in registro.items() if k != "dato"}],
+                )
+            except Exception as exc:
+                registro["aviso_chroma"] = f"{exc.__class__.__name__}"
         return registro
 
     @staticmethod
@@ -147,15 +158,16 @@ class LongTermMemory:
 
     @staticmethod
     def all() -> list[dict]:
-        if not MEMORY_FILE.exists():
-            return []
-        out = []
-        with open(MEMORY_FILE, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if line:
-                    out.append(json.loads(line))
-        return out
+        with _LONG_TERM_LOCK:
+            if not MEMORY_FILE.exists():
+                return []
+            out = []
+            with open(MEMORY_FILE, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if line:
+                        out.append(json.loads(line))
+            return out
 
     @staticmethod
     def recent_context(limit: int = 5) -> str:

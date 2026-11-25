@@ -15,7 +15,10 @@ sin IA, para que la interfaz siga siendo util igual que la CLI.
 """
 from __future__ import annotations
 
+import os
 import re
+import threading
+import time
 
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -46,22 +49,61 @@ from tools.inventory_lookup import (
 
 _agent = None
 _agent_model_id = None
+_AGENT_LOCK = threading.RLock()
+
+# Circuit breaker: tras varios 429 seguidos se deja de llamar al proveedor
+# durante unos segundos. El servidor web devuelve 503 en vez de acumular hilos.
+_CIRCUIT = {"fallos": 0, "abierto_hasta": 0.0}
+_CIRCUIT_LOCK = threading.Lock()
+CIRCUIT_THRESHOLD = max(1, int(os.getenv("AGENT_CIRCUIT_THRESHOLD") or 3))
+CIRCUIT_COOLDOWN_S = max(5, int(os.getenv("AGENT_CIRCUIT_COOLDOWN_S") or 30))
 
 
 def build_agent():
-    """Compila el agente de LangChain (singleton por modelo)."""
+    """Compila el agente de LangChain (singleton por modelo, seguro con hilos)."""
     global _agent, _agent_model_id
-    cfg = get_provider_config()
-    if cfg is None:
-        return None
-    if _agent is not None and _agent_model_id == cfg["model"]:
-        return _agent
-    # Temperatura baja para el loop de herramientas: la seleccion de tools debe
-    # ser estable (la prosa la suaviza el propio system prompt).
-    model = get_chat_model(temperature=0.1)
-    _agent = create_agent(model=model, tools=ALL_TOOLS, system_prompt=SYSTEM_PROMPT)
-    _agent_model_id = cfg["model"]
+    if _agent is not None:
+        cfg = get_provider_config()
+        if cfg is None or _agent_model_id == cfg["model"]:
+            return _agent
+    with _AGENT_LOCK:
+        cfg = get_provider_config()
+        if cfg is None:
+            return None
+        if _agent is not None and _agent_model_id == cfg["model"]:
+            return _agent
+        # Temperatura baja para el loop de herramientas: la seleccion de tools debe
+        # ser estable (la prosa la suaviza el propio system prompt).
+        model = get_chat_model(temperature=0.1)
+        _agent = create_agent(model=model, tools=ALL_TOOLS, system_prompt=SYSTEM_PROMPT)
+        _agent_model_id = cfg["model"]
     return _agent
+
+
+def circuit_abierto() -> bool:
+    """True si el proveedor esta temporalmente cortado por 429."""
+    with _CIRCUIT_LOCK:
+        return time.time() < _CIRCUIT["abierto_hasta"]
+
+
+def circuit_reintentar_en() -> int:
+    with _CIRCUIT_LOCK:
+        return max(0, int(_CIRCUIT["abierto_hasta"] - time.time()))
+
+
+def registrar_resultado(rate_limited: bool, limite_diario: bool = False) -> None:
+    """Actualiza el circuit breaker con el resultado de una llamada."""
+    with _CIRCUIT_LOCK:
+        if limite_diario:
+            _CIRCUIT["fallos"] = 0
+            _CIRCUIT["abierto_hasta"] = 0.0
+        elif rate_limited:
+            _CIRCUIT["fallos"] += 1
+            if _CIRCUIT["fallos"] >= CIRCUIT_THRESHOLD:
+                _CIRCUIT["abierto_hasta"] = time.time() + CIRCUIT_COOLDOWN_S
+                print(f"(aviso) Circuit breaker abierto {CIRCUIT_COOLDOWN_S}s por 429 repetidos.")
+        else:
+            _CIRCUIT["fallos"] = 0
 
 
 def _messages_for(agent_input: str, session_id: str) -> list:
@@ -88,31 +130,32 @@ def _sum_tokens(messages) -> dict | None:
     return total if found else None
 
 
-def _invoke_with_retry(agent, payload: dict) -> tuple[dict, int, bool]:
+def _invoke_with_retry(
+    agent, payload: dict, max_wait_s: float | None = None
+) -> tuple[dict, int, bool]:
     """Invoca el loop plan->tool con reintentos solo ante limite de tasa.
 
-    Devuelve (resultado, reintentos_usados). Otros errores se propagan al
-    caller para que caiga al fallback sin reintentar (no se reintentan
-    llamadas que fallaron por otra causa).
+    ``max_wait_s`` permite a la web limitar el tiempo total dormido (para no
+    acumular hilos); los evals lo dejan en None y mantienen el backoff completo.
     """
-    import time
-
     intentos = max(0, RATE_LIMIT_RETRIES)
+    esperado = 0.0
     for intento in range(intentos + 1):
         try:
             return agent.invoke(payload), intento, False
         except Exception as exc:
             if is_daily_limit_error(exc):
-                # La cuota diaria no se recupera esperando 20/40/60/80 s: el
-                # reinicio es a la medianoche. Se propaga para avisar bien.
                 print(f"(aviso) Limite diario de tokens del proveedor "
                       f"({exc.__class__.__name__}): no se reintenta.")
                 raise
             if is_rate_limit_error(exc) and intento < intentos:
                 espera = retry_delay_s(intento)
+                if max_wait_s is not None and esperado + espera > max_wait_s:
+                    raise  # el caller cae al fallback sin seguir durmiendo
                 print(f"(aviso) Limite de tasa en el agente ({exc.__class__.__name__}): "
                       f"reintento {intento + 1}/{intentos} en {espera:.0f}s...")
                 time.sleep(espera)
+                esperado += espera
                 continue
             raise
     raise RuntimeError("reintentos agotados")  # inalcanzable, por completitud
@@ -188,7 +231,9 @@ def _fallback(user_input: str) -> str:
     )
 
 
-def run(agent_input: str, session_id: str = "default") -> dict:
+def run(
+    agent_input: str, session_id: str = "default", max_retry_wait_s: float | None = None
+) -> dict:
     """Ejecuta una interaccion completa del agente y devuelve el resultado."""
     inventory = get_inventory()
     agent = build_agent()
@@ -198,16 +243,21 @@ def run(agent_input: str, session_id: str = "default") -> dict:
     used_llm = False
     limite_diario = False
 
-    if agent is None:
-        answer = _fallback(agent_input)
+    if agent is None or circuit_abierto():
+        answer = (
+            ("El servicio de IA esta en pausa breve por saturacion; reintente en unos segundos. ")
+            if circuit_abierto() else ""
+        ) + _fallback(agent_input)
+        rate_limited = circuit_abierto()
         reintentos = 0
-        rate_limited = False
     else:
         reintentos = 0
         rate_limited = False
         try:
             result, reintentos, _ = _invoke_with_retry(
-                agent, {"messages": _messages_for(agent_input, session_id)}
+                agent,
+                {"messages": _messages_for(agent_input, session_id)},
+                max_wait_s=max_retry_wait_s,
             )
             messages = result.get("messages", [])
             steps = steps_from_messages(messages)
@@ -277,18 +327,24 @@ def run(agent_input: str, session_id: str = "default") -> dict:
     }
 
 
-def health() -> dict:
-    """Estado del LLM y de los datos para la interfaz (/api/health)."""
+def health(detailed: bool = True) -> dict:
+    """Estado del LLM y de los datos.
+
+    ``detailed=False`` es el modo publico del servidor web: no revela la ruta
+    del indice, el modelo de embeddings ni la lista de herramientas.
+    """
     cfg = get_provider_config()
     inventory = get_inventory()
     email_cfg = get_email_config()
-    return {
+    info = {
         "llm_disponible": cfg is not None,
         "proveedor": cfg["provider"] if cfg else None,
         "modelo": cfg["model"] if cfg else None,
         "repuestos": len(inventory),
-        "memoria_largo_plazo": len(LongTermMemory.all()),
-        "herramientas": [t.name for t in ALL_TOOLS],
         "correo_modo": email_cfg["modo"],
         "correo_configurado": email_cfg["modo"] == "smtp",
     }
+    if detailed:
+        info["memoria_largo_plazo"] = len(LongTermMemory.all())
+        info["herramientas"] = [t.name for t in ALL_TOOLS]
+    return info

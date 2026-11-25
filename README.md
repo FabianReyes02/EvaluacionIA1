@@ -87,15 +87,27 @@ python scripts/verify_env.py
 ### 1. Interfaz web (recomendada)
 
 ```bash
-python web/server.py             # abre http://127.0.0.1:8000
+python web/server.py             # abre http://127.0.0.1:8000/login
 python web/server.py 8080        # otro puerto
 ```
 
-Incluye búsqueda rápida por marca/modelo/año, chat libre con historial y la
-tabla del inventario con alertas de stock. La interfaz tiene **dos pestañas**:
-**💬 Chat** (búsqueda rápida + conversación con el agente) y **📦 Inventario**
-(tabla de repuestos con el contador de stock), de modo que el catálogo no
-queda apilado debajo del chat.
+La interfaz requiere **login**. En `/register` cualquier compañero crea su
+cuenta de **cliente** y entra al chat (búsqueda rápida + conversación con
+historial). El **admin** (creado desde `ADMIN_USER`/`ADMIN_PASSWORD` en `.env`)
+tiene `/admin` con: alta/gestión de usuarios, sesiones activas (se pueden
+cerrar), auditoría de los últimos 30 días y el inventario con alertas de
+stock. El cliente **no** ve inventario ni el panel.
+
+El servidor limita los chats concurrentes (`MAX_CONCURRENT_CHATS=3`), los hace
+esperar hasta `CHAT_QUEUE_WAIT_S=15` y recién entonces responde `503` con
+`retry_after` cuando está saturado; también aplica rate limit por usuario/IP.
+Así 5-10 consultas simultáneas se turnan en vez de tumbar el proceso. Para
+probar carga y permisos:
+
+```bash
+python scripts/load_test.py --url http://127.0.0.1:8000 --users 5 --requests 1 \
+  --admin-user admin --admin-password '...'
+```
 
 ### 2. Línea de comandos
 

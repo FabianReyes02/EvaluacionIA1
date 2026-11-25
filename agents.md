@@ -3,7 +3,7 @@
 **Proyecto:** EvaluacionIA1 (Asistente de IA para Venta de Repuestos Automotrices)
 **Curso:** ISY0101 Ingeniería de Soluciones con IA — Evaluación Parcial 2 (35%)
 **GitHub:** https://github.com/FabianReyes02/EvaluacionIA1
-**Última actualización:** 2026-10-21
+**Última actualización:** 2026-11-24
 
 > Memoria técnica del proyecto. Se actualiza en cada sesión para preservar
 > decisiones, tradeoffs y avance entre entregas. Sirve de bitácora para el
@@ -41,6 +41,9 @@
 | D15 | Base de datos interna (stock real) | **`tools/db.py`**: SQLite de la stdlib (`data/internal/tienda.db`, gitignored) con tablas `repuestos`, `ventas`, `venta_items` y `movimientos_stock`. La BD es la **verdad del stock**; el CSV sigue siendo el catálogo y se re-sincroniza (columna `stock`) después de cada venta. `load_inventory()` devuelve el catálogo del CSV con el stock real de la BD | Cero dependencias nuevas (`sqlite3` es stdlib) y estado persistente real: las ventas bajan existencias de verdad y quedan auditadas. El CSV re-sincronizado evita que guardrails, tools, RAG y la web muestren stock viejo. `TIENDA_DB_PATH` aísla la BD (los evals usan una aparte) | Solo CSV (el stock no se descontaría de verdad), SQLAlchemy/Postgres (dependencia extra y servidor que instalar), o guardar el stock en el JSONL de memoria |
 | D16 | Herramientas de venta y recomendación | **`registrar_venta`** (tool de escritura: registra la venta, descuenta stock, re-sincroniza el CSV, reindexa el RAG y opcionalmente manda el comprobante) y **`recomendar_repuesto`** (pipeline completo del encargo: RAG interno + compatibilidad + RAG de manuales con cita de fuente). El **correo pasa a envío real por SMTP por defecto** (`EMAIL_MODE="smtp"`) | El encargo pide que el stock en stock crítico avise y que el agente sea útil de punta a punta; sin una tool de venta el stock nunca cambiaba y la alerta era decorativa. La recomendación evita que el modelo improvise: la tool devuelve el código con su fuente | Confiar en el prompt para que el modelo "baje el stock", o una tool que solo simule sin persistir |
 | D17 | Documento de la cotización | **`tools/pdf_cotizacion.py`**: generador propio con la stdlib (PDF 1.4, Helvetica/Helvetica-Bold base-14 con `WinAnsiEncoding`, tabla con paginado automático y pie de página). El PDF es lo que recibe el cliente (adjunto en el correo y artefacto de `exportar_cotizacion`); el JSON queda como **copia legible por máquina** para trazabilidad y pruebas | El correo adjuntaba el JSON crudo, que no es un documento presentable. Se descartaron `fpdf2` y `reportlab` porque arrastran **Pillow** y otras extensiones binarias: el Control de aplicaciones de la máquina de desarrollo ya bloqueó el `.pyd` de `tiktoken` (D11). El generador propio pesa ~4 KB por documento, no suma dependencias y se valida con `pypdf` (ya presente por el loader de manuales) | `fpdf2`/`reportlab` (dependencias binarias), HTML→PDF con navegador (frágil y no reproducible), o seguir mandando el JSON |
+
+| D18 | Seguridad de la web | **`web/auth.py`** (SQLite `data/internal/auth.db`): PBKDF2-SHA256, **registro abierto** de clientes, sesiones server-side (solo SHA-256 del token en BD), cookie `HttpOnly; SameSite=Strict`, bloqueo por intentos, auditoría con retención de 30 días. Admin inicial desde `ADMIN_USER`/`ADMIN_PASSWORD` en `.env`. Matriz de roles única en `web/server.py`; CORS restringido y `/api/health` mínimo | Un `curl` cualquiera veía el inventario y no había forma de distinguir compañeros de administradores; las claves no deben viajar en git | Basic Auth sin revocación, JWT sin logout real, o dejar el inventario público "porque es un prototipo" |
+| D19 | Concurrencia del servidor | Cola acotada (`MAX_CONCURRENT_CHATS`) con espera `CHAT_QUEUE_WAIT_S` y `503` + `retry_after`; rate limit por usuario/IP; circuit breaker ante 429; locks en RAG (cliente/embeddings/reindex), memoria, traza y SQLite; `preload()` al arrancar | Con 5-10 usuarios el servidor caía: `ThreadingHTTPServer` sin límite, reindexados simultáneos y ráfagas contra el TPM gratis de Groq | Subir hilos infinitos o dormir 20-80s dentro de cada petición |
 
 Convencion de commits: mensajes simples y en espanol durante todo el semestre.
 
@@ -488,3 +491,11 @@ EvaluacionIA1/
      `dry`. Hay dos muestras para revisar el diseño:
      `data/exports/demo_cotizacion.pdf` y `data/exports/demo_comprobante.pdf`
      (gitignored, se regeneran con el generador).
+- **2026-11-24 — login/roles/auditoría y resiliencia (D18/D19).** Se cerró el
+  acceso público al inventario: registro abierto de clientes, admin desde
+  `.env`, panel `/admin` con usuarios/sesiones/auditoría (30 días) e
+  inventario, y cola/circuit breaker para 5-10 consultas concurrentes.
+  Verificado en local con `pytest` (26 pruebas), `scripts/load_test.py`
+  (10 usuarios, 10/200, sin 5xx) y `scripts/fuzz_api_web.py` (13/13).
+  El despliegue en EC2 quedó pendiente porque el lab fue cancelado
+  (`voc-cancel-cred`: `ec2:DescribeInstances` denegado y SSH sin respuesta).

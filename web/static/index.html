@@ -16,7 +16,10 @@
          align-items:baseline;flex-wrap:wrap}
   header h1{margin:0;font-size:18px}
   header .sub{color:#9db0cc;font-size:13px}
-  header .status{margin-left:auto;font-size:12px;background:#1c2b44;color:#cfe0ff;
+   header #status{margin-left:auto}
+   header a{color:#cfe0ff}
+   header button{padding:4px 10px;font-size:12px}
+  header .status{font-size:12px;background:#1c2b44;color:#cfe0ff;
                  padding:4px 10px;border-radius:99px}
   main{max-width:900px;margin:0 auto;padding:16px;display:grid;gap:14px}
   .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
@@ -69,15 +72,11 @@
   <h1>🚗 Repuestos Sur</h1>
   <span class="sub">Asistente IA de repuestos automotrices</span>
   <span id="status" class="status">verificando…</span>
+  <span id="userbox" class="status">…</span>
+  <button class="ghost" id="logout">Salir</button>
 </header>
 
 <main>
-  <nav class="tabs" role="tablist">
-    <button type="button" class="tab activa" role="tab" data-tab="chat">💬 Chat</button>
-    <button type="button" class="tab" role="tab" data-tab="inv">📦 Inventario
-      <span class="badge" id="count"></span></button>
-  </nav>
-
   <section class="panel activa" id="panel-chat">
     <section class="card">
       <h2>Búsqueda rápida</h2>
@@ -98,21 +97,6 @@
         <input id="input" placeholder="Escribe tu consulta…" autocomplete="off">
         <button type="submit" id="send">Enviar</button>
       </form>
-    </section>
-  </section>
-
-  <section class="panel" id="panel-inv">
-    <section class="card">
-      <h2>Inventario</h2>
-      <div style="overflow-x:auto">
-        <table>
-          <thead>
-            <tr><th>Código</th><th>Descripción</th><th>Marca</th>
-                <th>Categoría</th><th>Vehículos compatibles</th><th>Precio</th><th>Stock</th></tr>
-          </thead>
-          <tbody id="parts"></tbody>
-        </table>
-      </div>
     </section>
   </section>
 </main>
@@ -138,6 +122,7 @@ function addBubble(cls, html, meta) {
 
 async function api(path, opts) {
   const res = await fetch(path, opts);
+  if (res.status === 401) { location.href = "/login"; throw new Error("sesión expirada"); }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
   return data;
@@ -173,16 +158,6 @@ async function send(text) {
 
 $("chatForm").addEventListener("submit", e => { e.preventDefault(); send($("input").value); });
 
-// Pestañas: el chat y el inventario son paneles independientes.
-document.querySelectorAll(".tab").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach(b => b.classList.toggle("activa", b === btn));
-    document.querySelectorAll(".panel").forEach(p =>
-      p.classList.toggle("activa", p.id === "panel-" + btn.dataset.tab));
-    if (btn.dataset.tab === "chat") $("input").focus();
-  });
-});
-
 $("quickForm").addEventListener("submit", e => {
   e.preventDefault();
   const m = $("marca").value.trim(), mo = $("modelo").value.trim(), a = $("anio").value.trim();
@@ -201,28 +176,25 @@ async function loadHealth() {
       : "modo sin IA (sin API key)") + ` · ${correo}`;
     const c = h.indice && h.indice.colecciones ? h.indice.colecciones : {};
     const idx = Object.entries(c).map(([k,v]) => `${k}: ${v}`).join(" · ");
-    if (idx) $("status").title = `herramientas: ${h.herramientas.join(", ")}\níndice: ${idx}\n${correo}`;
+    if (idx) $("status").title = `índice: ${idx}\n${correo}`;
   } catch (e) { $("status").textContent = "sin conexión"; }
 }
 
-async function loadParts() {
+async function loadMe() {
   try {
-    const d = await api("/api/inventory");
-    $("count").textContent = d.parts.length;
-    $("parts").innerHTML = d.parts.map(p => {
-      const s = Number(p.stock);
-      const cls = s <= 0 ? "bad" : (s < 5 ? "warn" : "ok");
-      const txt = s <= 0 ? "agotado" : (s < 5 ? `bajo (${s})` : s);
-      return `<tr><td><b>${esc(p.codigo)}</b></td><td>${esc(p.descripcion)}</td>
-        <td>${esc(p.marca)}</td><td>${esc(p.categoria)}</td>
-        <td>${esc(p.vehiculos_compatibles)}</td>
-        <td>$${esc(p.precio)}</td><td><span class="pill ${cls}">${txt}</span></td></tr>`;
-    }).join("");
-  } catch (e) { $("count").textContent = "?"; }
+    const me = await api("/api/me");
+    $("userbox").innerHTML = `${esc(me.usuario)} · ${esc(me.rol)}` +
+      (me.rol === "admin" ? ` · <a href="/admin">admin</a>` : "");
+  } catch (e) { /* api() ya redirige al login */ }
 }
 
+$("logout").addEventListener("click", async () => {
+  try { await api("/api/logout", {method:"POST"}); } catch (e) {}
+  location.href = "/login";
+});
+
 loadHealth();
-loadParts();
+loadMe();
 addBubble("bot", "¡Hola! Soy el asistente de **Repuestos Sur**. Dime marca, modelo y año de tu auto " +
   "o el repuesto que buscas y reviso el inventario y los manuales técnicos.");
 $("input").focus();

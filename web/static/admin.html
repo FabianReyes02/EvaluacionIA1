@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Repuestos Sur — Administración</title>
+<style>
+  :root{--bg:#f4f6f8;--card:#fff;--ink:#1d2733;--muted:#66768a;--line:#e3e8ee;
+        --brand:#0b5cff;--ok:#128a4b;--warn:#b8720a;--bad:#c0392b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  header{background:#101a2b;color:#fff;padding:12px 18px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  header h1{margin:0;font-size:17px}
+  header .who{margin-left:auto;color:#9db0cc;font-size:13px}
+  header a{color:#cfe0ff}
+  main{max-width:1100px;margin:0 auto;padding:16px;display:grid;gap:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:14px}
+  .card h2{margin:0 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:800px){.grid2{grid-template-columns:1fr}}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  th{color:var(--muted);font-size:12px}
+  input,select,button{font:inherit;padding:7px 9px;border-radius:8px;border:1px solid var(--line)}
+  input,select{background:#fbfcfe}
+  button{background:var(--brand);color:#fff;border:0;cursor:pointer;font-weight:600}
+  button:hover{background:#0846c4}
+  button.ghost{background:#eef2f7;color:var(--ink)}
+  button.danger{background:#fdeae7;color:var(--bad)}
+  form.inline{display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px}
+  form.inline label{font-size:12px;color:var(--muted);display:grid;gap:4px}
+  .pill{display:inline-block;padding:1px 7px;border-radius:99px;font-size:11px;font-weight:700}
+  .admin{background:#e8f0ff;color:var(--brand)} .cliente{background:#eef2f7;color:var(--muted)}
+  .ok{background:#e4f6ec;color:var(--ok)} .warn{background:#fdf2df;color:var(--warn)} .bad{background:#fdeae7;color:var(--bad)}
+  .msg{font-size:13px;min-height:18px;color:var(--bad);margin-top:6px}
+  .scroll{max-height:340px;overflow:auto}
+  .hint{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>🛠️ Repuestos Sur — Administración</h1>
+  <a href="/">← Volver al chat</a>
+  <span class="who" id="who">…</span>
+  <button class="ghost" id="logout">Cerrar sesión</button>
+</header>
+<main>
+  <section class="card">
+    <h2>Crear usuario</h2>
+    <form class="inline" id="newUser">
+      <label>Usuario<input id="nu-user" required></label>
+      <label>Contraseña<input id="nu-pass" type="password" required placeholder="mínimo 10 caracteres"></label>
+      <label>Rol<select id="nu-rol"><option value="cliente">cliente</option><option value="admin">admin</option></select></label>
+      <button type="submit">Crear cuenta</button>
+    </form>
+    <div class="msg" id="newMsg"></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <h2>Usuarios</h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Usuario</th><th>Rol</th><th>Estado</th><th>Creado</th><th>Acciones</th></tr></thead>
+        <tbody id="users"></tbody>
+      </table></div>
+    </section>
+    <section class="card">
+      <h2>Sesiones activas</h2>
+      <div class="scroll"><table>
+        <thead><tr><th>Usuario</th><th>Rol</th><th>IP</th><th>Inicio</th><th>Expira</th><th></th></tr></thead>
+        <tbody id="sessions"></tbody>
+      </table></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Auditoría (últimos 30 días)</h2>
+    <form class="inline" id="filters">
+      <label>Usuario<input id="f-user" placeholder="filtrar…"></label>
+      <label>Evento<select id="f-event"><option value="">todos</option></select></label>
+      <button type="submit">Filtrar</button>
+      <button type="button" class="ghost" id="refresh">Actualizar</button>
+    </form>
+    <div class="scroll"><table>
+      <thead><tr><th>Fecha</th><th>Usuario</th><th>Rol</th><th>Evento</th><th>IP</th><th>Detalle</th></tr></thead>
+      <tbody id="audit"></tbody>
+    </table></div>
+  </section>
+
+  <section class="card">
+    <h2>Inventario</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Código</th><th>Descripción</th><th>Marca</th><th>Precio</th><th>Stock</th></tr></thead>
+      <tbody id="parts"></tbody>
+    </table></div>
+  </section>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+async function api(path, opts) {
+  const res = await fetch(path, opts);
+  if (res.status === 401) { location.href = "/login"; throw new Error("sesión expirada"); }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+  return data;
+}
+async function jsonApi(path, method, body) {
+  return api(path, {method, headers: {"Content-Type": "application/json"}, body: JSON.stringify(body || {})});
+}
+
+async function loadMe() {
+  const me = await api("/api/me");
+  $("who").textContent = `${me.usuario} · ${me.rol}`;
+  if (me.rol !== "admin") location.href = "/";
+}
+async function loadUsers() {
+  const d = await api("/api/admin/usuarios");
+  $("users").innerHTML = d.usuarios.map(u => `<tr>
+    <td><b>${esc(u.username)}</b></td>
+    <td><span class="pill ${esc(u.rol)}">${esc(u.rol)}</span></td>
+    <td><span class="pill ${u.activo ? 'ok' : 'bad'}">${u.activo ? 'activo' : 'inactivo'}</span></td>
+    <td>${esc(u.creado_en)}</td>
+    <td>
+      <select data-rol="${u.id}" onchange="setRol(${u.id}, this.value)">
+        <option value="cliente" ${u.rol === 'cliente' ? 'selected' : ''}>cliente</option>
+        <option value="admin" ${u.rol === 'admin' ? 'selected' : ''}>admin</option>
+      </select>
+      <button class="ghost" onclick="setActivo(${u.id}, ${!u.activo})">${u.activo ? 'desactivar' : 'activar'}</button>
+      <button class="danger" onclick="delUser(${u.id})">eliminar</button>
+    </td></tr>`).join("");
+}
+async function setRol(id, rol) {
+  try { await jsonApi(`/api/admin/usuarios/${id}/rol`, "PATCH", {rol}); await loadUsers(); }
+  catch (e) { alert(e.message); await loadUsers(); }
+}
+async function setActivo(id, activo) {
+  try { await jsonApi(`/api/admin/usuarios/${id}/activo`, "PATCH", {activo}); await loadUsers(); await loadSessions(); }
+  catch (e) { alert(e.message); }
+}
+async function delUser(id) {
+  if (!confirm("¿Eliminar esta cuenta y cerrar todas sus sesiones?")) return;
+  try { await api(`/api/admin/usuarios/${id}`, {method:"DELETE"}); await loadUsers(); await loadSessions(); }
+  catch (e) { alert(e.message); }
+}
+async function loadSessions() {
+  const d = await api("/api/admin/sesiones");
+  $("sessions").innerHTML = d.sesiones.length
+    ? d.sesiones.map(s => `<tr><td><b>${esc(s.username)}</b></td>
+        <td><span class="pill ${esc(s.rol)}">${esc(s.rol)}</span></td>
+        <td>${esc(s.ip)}</td><td>${esc(s.creado_en)}</td><td>${esc(s.expira_en)}</td>
+        <td><button class="danger" onclick="closeSession('${esc(s.token_hash)}')">cerrar</button></td></tr>`).join("")
+    : `<tr><td colspan="6" class="hint">No hay sesiones activas.</td></tr>`;
+}
+async function closeSession(hash) {
+  try { await api(`/api/admin/sesiones/${encodeURIComponent(hash)}`, {method:"DELETE"}); await loadSessions(); }
+  catch (e) { alert(e.message); }
+}
+async function loadAudit() {
+  const u = encodeURIComponent($("f-user").value.trim());
+  const ev = encodeURIComponent($("f-event").value);
+  const d = await api(`/api/admin/audit?limite=200&usuario=${u}&evento=${ev}`);
+  const eventos = [...new Set(d.eventos.map(e => e.evento))].sort();
+  const sel = $("f-event");
+  const actual = sel.value;
+  sel.innerHTML = `<option value="">todos</option>` + eventos.map(e => `<option value="${esc(e)}">${esc(e)}</option>`).join("");
+  sel.value = actual;
+  $("audit").innerHTML = d.eventos.length
+    ? d.eventos.map(e => `<tr><td>${esc(e.ts)}</td><td>${esc(e.usuario)}</td>
+        <td>${esc(e.rol)}</td><td>${esc(e.evento)}</td><td>${esc(e.ip)}</td>
+        <td>${esc(e.detalle)}</td></tr>`).join("")
+    : `<tr><td colspan="6" class="hint">Sin eventos para esos filtros.</td></tr>`;
+}
+async function loadParts() {
+  const d = await api("/api/inventory");
+  $("parts").innerHTML = d.parts.map(p => {
+    const s = Number(p.stock);
+    const cls = s <= 0 ? "bad" : (s < 5 ? "warn" : "ok");
+    const txt = s <= 0 ? "agotado" : (s < 5 ? `bajo (${s})` : s);
+    return `<tr><td><b>${esc(p.codigo)}</b></td><td>${esc(p.descripcion)}</td>
+      <td>${esc(p.marca)}</td><td>$${esc(p.precio)}</td>
+      <td><span class="pill ${cls}">${txt}</span></td></tr>`;
+  }).join("");
+}
+
+$("newUser").addEventListener("submit", async e => {
+  e.preventDefault(); $("newMsg").textContent = "";
+  try {
+    await jsonApi("/api/admin/usuarios", "POST", {
+      username: $("nu-user").value, password: $("nu-pass").value, rol: $("nu-rol").value
+    });
+    $("newMsg").textContent = "Cuenta creada.";
+    $("nu-user").value = ""; $("nu-pass").value = "";
+    await loadUsers();
+  } catch (err) { $("newMsg").textContent = err.message; }
+});
+$("filters").addEventListener("submit", e => { e.preventDefault(); loadAudit(); });
+$("refresh").addEventListener("click", () => { loadUsers(); loadSessions(); loadAudit(); });
+$("logout").addEventListener("click", async () => {
+  await api("/api/logout", {method:"POST"}); location.href = "/login";
+});
+
+(async () => {
+  try {
+    await loadMe();
+    await Promise.all([loadUsers(), loadSessions(), loadAudit(), loadParts()]);
+  } catch (e) { console.error(e); }
+})();
+</script>
+</body>
+</html>

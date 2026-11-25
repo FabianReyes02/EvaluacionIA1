@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Repuestos Sur — Iniciar sesión</title>
+<style>
+  :root{--bg:#f4f6f8;--card:#fff;--ink:#1d2733;--muted:#66768a;--line:#e3e8ee;--brand:#0b5cff;--bad:#c0392b}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       display:grid;place-items:center;min-height:100vh}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:24px;width:min(380px,92vw);
+        box-shadow:0 8px 30px rgba(20,40,70,.06)}
+  h1{margin:0 0 4px;font-size:20px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:18px}
+  label{display:block;font-size:13px;font-weight:600;margin:12px 0 4px}
+  input{width:100%;padding:10px;border:1px solid var(--line);border-radius:8px;font:inherit;background:#fbfcfe}
+  input:focus{outline:2px solid #cfe0ff;border-color:var(--brand)}
+  button{width:100%;margin-top:18px;padding:11px;border:0;border-radius:8px;background:var(--brand);
+         color:#fff;font:inherit;font-weight:700;cursor:pointer}
+  button:hover{background:#0846c4}
+  .error{color:var(--bad);font-size:13px;margin-top:12px;min-height:20px}
+  .foot{margin-top:16px;font-size:13px;color:var(--muted);text-align:center}
+  a{color:var(--brand);font-weight:600}
+</style>
+</head>
+<body>
+<section class="card">
+  <h1>🚗 Repuestos Sur</h1>
+  <div class="sub">Asistente IA — acceso de usuarios</div>
+  <form id="form">
+    <label for="username">Usuario</label>
+    <input id="username" name="username" autocomplete="username" required>
+    <label for="password">Contraseña</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Ingresar</button>
+  </form>
+  <div class="error" id="error"></div>
+  <div class="foot">¿No tenés cuenta? <a href="/register">Creala acá</a></div>
+</section>
+<script>
+const $ = (id) => document.getElementById(id);
+$("form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  $("error").textContent = "";
+  const btn = e.target.querySelector("button");
+  btn.disabled = true;
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({username: $("username").value, password: $("password").value})
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || ("HTTP " + res.status));
+    location.href = "/";
+  } catch (err) {
+    $("error").textContent = err.message;
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

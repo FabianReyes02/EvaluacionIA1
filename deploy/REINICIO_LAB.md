@@ -133,6 +133,36 @@ cd /opt/repuestossur/EvaluacionIA1
 Debe listar `EvaluacionIA1`. Después de una consulta al chat, deben aparecer
 runs con `client.list_runs(project_name='EvaluacionIA1', limit=5)`.
 
+### 6b. Login, roles y prueba de carga
+
+La interfaz ya **no es pública**: abrí `http://<IP>/login`. Cualquier compañero
+puede crear su cuenta en `/register` (rol `cliente`) y el admin entra con
+`ADMIN_USER`/`ADMIN_PASSWORD` del `.env` (se crea una sola vez y se guarda
+hasheado en `data/internal/auth.db`). El panel del admin está en `/admin`:
+usuarios, sesiones activas, auditoría (30 días) e inventario.
+
+Variables nuevas del `.env` (ver `.env.example`):
+`AUTH_DB_PATH`, `WEB_SESSION_TTL_S`, `LOGIN_MAX_ATTEMPTS`, `LOGIN_LOCKOUT_S`,
+`REGISTER_MAX_PER_HOUR`, `AUDIT_RETENTION_DAYS`, `MAX_CONCURRENT_CHATS`,
+`CHAT_QUEUE_WAIT_S`, `CHAT_RATE_LIMIT_PER_MIN`, `WEB_RETRY_WAIT_S`,
+`AGENT_CIRCUIT_THRESHOLD`,
+`AGENT_CIRCUIT_COOLDOWN_S`, `REPUSTOS_HTTPS` y `REPUSTOS_ALLOWED_ORIGIN`.
+
+Para verificar después de un `git pull` + restart:
+
+```bash
+cd /opt/repuestossur/EvaluacionIA1
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/api/health   # 200
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8000/api/inventory # 401
+.venv/bin/python scripts/load_test.py --url http://127.0.0.1:8000 \
+  --users 5 --requests 1 --admin-user "$ADMIN_USER" --admin-password "$ADMIN_PASSWORD"
+```
+
+El load test deja el informe en `tests/resultados/load/load_test.json` y debe
+dar `ok: true`, sin 5xx, con `cliente_inventory: 403` y `admin_inventory: 200`.
+Si hay 503, bajá `--users` o subí `MAX_CONCURRENT_CHATS` con cuidado (el cupo
+gratuito de Groq es por modelo).
+
 ### 7. Si la instancia fue terminada (ya no aparece en `describe-instances`)
 
 Ahí sí hay que desplegar desde cero. Seguí **`deploy/README_AWS.md`**, con el

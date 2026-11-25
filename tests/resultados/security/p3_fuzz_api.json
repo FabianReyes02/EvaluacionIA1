@@ -1,21 +1,36 @@
 {
-  "timestamp": "2026-11-23T06:19:42",
+  "timestamp": "2026-11-24T21:31:03",
   "port": 8765,
   "cases": [
     {
-      "id": "P3.1a",
+      "id": "P3.0a",
       "ok": true,
-      "detail": "GET / -> 200"
+      "detail": "health publico -> 200"
     },
     {
-      "id": "P3.1b",
+      "id": "P3.0b",
       "ok": true,
-      "detail": "health 200"
+      "detail": "inventario sin sesion -> 401"
     },
     {
-      "id": "P3.1c",
+      "id": "P3.0c",
       "ok": true,
-      "detail": "inventory 200"
+      "detail": "raiz sin sesion -> 200"
+    },
+    {
+      "id": "P3.0d",
+      "ok": true,
+      "detail": "login -> 200"
+    },
+    {
+      "id": "P3.0e",
+      "ok": true,
+      "detail": "inventario con admin -> 200"
+    },
+    {
+      "id": "P3.0f",
+      "ok": true,
+      "detail": "/api/me -> 200"
     },
     {
       "id": "P3.2a",

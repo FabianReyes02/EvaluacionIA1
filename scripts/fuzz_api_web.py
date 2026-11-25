@@ -1,108 +1,121 @@
 #!/usr/bin/env python3
-"""P3: fuzz basico contra la API web del servidor local (stdlib).
+"""P3: fuzz basico contra la API web (stdlib), con autenticacion.
 
-Levanta el servidor en un hilo no es trivial aqui; este script asume que
-`python web/server.py` corre en http://127.0.0.1:8000 (o usar --port).
-
+Asume que `python web/server.py` corre en http://127.0.0.1:8000 (o --port).
 Ejemplo:
-    # en otra terminal: python web/server.py 8765
-    python scripts/fuzz_api_web.py --port 8765
+    python scripts/fuzz_api_web.py --port 8765 --username admin --password '...'
 """
 from __future__ import annotations
 
 import argparse
 import json
-import socket
 import sys
-import time
 import urllib.error
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from http.cookiejar import CookieJar
 from pathlib import Path
+from urllib.request import HTTPCookieProcessor, Request, build_opener
 
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def req(method: str, url: str, body: bytes | None = None, headers: dict | None = None) -> tuple[int, str]:
-    hdrs = {"Accept": "application/json"}
-    if headers:
-        hdrs.update(headers)
-    r = urllib.request.Request(url, data=body, method=method, headers=hdrs)
-    try:
-        with urllib.request.urlopen(r, timeout=30) as resp:
-            return resp.getcode(), resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as e:
-        return e.code, e.read().decode("utf-8", errors="replace")
-    except Exception as e:
-        return -1, f"{e.__class__.__name__}: {e}"
+class Client:
+    def __init__(self, base: str):
+        self.base = base.rstrip("/")
+        self.opener = build_opener(HTTPCookieProcessor(CookieJar()))
+
+    def req(self, method: str, path: str, body=None, headers=None):
+        hdrs = {"Accept": "application/json"}
+        if headers:
+            hdrs.update(headers)
+        data = body
+        r = Request(self.base + path, data=data, method=method, headers=hdrs)
+        try:
+            with self.opener.open(r, timeout=30) as resp:
+                return resp.getcode(), resp.read().decode("utf-8", errors="replace")
+        except urllib.error.HTTPError as e:
+            return e.code, e.read().decode("utf-8", errors="replace")
+        except Exception as e:
+            return -1, f"{e.__class__.__name__}: {e}"
 
 
-def run(port: int) -> list[dict]:
+def run(port: int, username: str, password: str) -> list[dict]:
     base = f"http://127.0.0.1:{port}"
     cases: list[dict] = []
+    anon = Client(base)
+    auth = Client(base)
 
-    # P3.1
-    code, _ = req("GET", f"{base}/")
-    cases.append({"id": "P3.1a", "ok": code == 200, "detail": f"GET / -> {code}"})
-    code, txt = req("GET", f"{base}/api/health")
-    cases.append({"id": "P3.1b", "ok": code == 200 and "repuestos" in txt, "detail": f"health {code}"})
-    code, txt = req("GET", f"{base}/api/inventory")
-    cases.append({"id": "P3.1c", "ok": code == 200 and "parts" in txt, "detail": f"inventory {code}"})
+    def add(cid, ok, detail):
+        cases.append({"id": cid, "ok": bool(ok), "detail": detail})
 
-    # P3.2 POST chat
-    code, _ = req("POST", f"{base}/api/chat", body=None, headers={"Content-Type": "application/json"})
-    cases.append({"id": "P3.2a", "ok": code == 400, "detail": f"chat sin body -> {code}"})
+    # Sin sesion: solo publico, todo lo demas 401/303.
+    code, _ = anon.req("GET", "/api/health")
+    add("P3.0a", code == 200 and "repuestos" in _, f"health publico -> {code}")
+    code, _ = anon.req("GET", "/api/inventory")
+    add("P3.0b", code == 401, f"inventario sin sesion -> {code}")
+    code, _ = anon.req("GET", "/")
+    add("P3.0c", code in (303, 200), f"raiz sin sesion -> {code}")
 
+    if username and password:
+        code, txt = auth.req(
+            "POST", "/api/login",
+            json.dumps({"username": username, "password": password}).encode(),
+            {"Content-Type": "application/json"},
+        )
+        add("P3.0d", code == 200, f"login -> {code}")
+        code, _ = auth.req("GET", "/api/inventory")
+        add("P3.0e", code == 200, f"inventario con admin -> {code}")
+        code, _ = auth.req("GET", "/api/me")
+        add("P3.0f", code == 200, f"/api/me -> {code}")
+    else:
+        add("P3.0d", False, "sin credenciales de admin; se omiten pruebas autenticadas")
+
+    code, _ = auth.req("POST", "/api/chat", None, {"Content-Type": "application/json"})
+    add("P3.2a", code == 400, f"chat sin body -> {code}")
     payload = json.dumps({"message": ""}).encode()
-    code, _ = req("POST", f"{base}/api/chat", body=payload, headers={"Content-Type": "application/json"})
-    cases.append({"id": "P3.2b", "ok": code == 400, "detail": f"mensaje vacio -> {code}"})
-
+    code, _ = auth.req("POST", "/api/chat", payload, {"Content-Type": "application/json"})
+    add("P3.2b", code == 400, f"mensaje vacio -> {code}")
     payload = json.dumps({"message": 12345, "session": "x" * 200}).encode()
-    code, _ = req("POST", f"{base}/api/chat", body=payload, headers={"Content-Type": "application/json"})
-    cases.append({"id": "P3.2c", "ok": code in (200, 400, 500), "detail": f"tipos raros -> {code} (no colapso)"})
+    code, _ = auth.req("POST", "/api/chat", payload, {"Content-Type": "application/json"})
+    add("P3.2c", code in (200, 400, 500), f"tipos raros -> {code} (no colapso)")
+    payload = json.dumps({"message": "A" * (70 * 1024)}).encode()
+    code, txt = auth.req("POST", "/api/chat", payload, {"Content-Type": "application/json"})
+    add("P3.3", code == 400 and ("grande" in txt.lower() or "demasiado" in txt.lower()),
+        f"big body -> {code}")
 
-    # P3.3 cuerpo grande >64KB
-    big = json.dumps({"message": "A" * (70 * 1024)}).encode()
-    code, txt = req("POST", f"{base}/api/chat", body=big, headers={"Content-Type": "application/json"})
-    cases.append({"id": "P3.3", "ok": code == 400 and "grande" in txt.lower() or "demasiado" in txt.lower(), "detail": f"big body -> {code}"})
+    code, _ = auth.req("GET", "/static/..%2f..%2f.env")
+    add("P3.4a", code == 404, f"traversal encoded -> {code}")
+    code, _ = auth.req("GET", "/static/../../.env")
+    add("P3.4b", code in (400, 403, 404), f"traversal dots -> {code}")
 
-    # P3.4 path traversal
-    code, _ = req("GET", f"{base}/static/..%2f..%2f.env")
-    cases.append({"id": "P3.4a", "ok": code == 404, "detail": f"traversal encoded -> {code}"})
-    code, _ = req("GET", f"{base}/static/../../.env")
-    cases.append({"id": "P3.4b", "ok": code in (400, 403, 404), "detail": f"traversal dots -> {code}"})
-
-    # P3.5 rafaga ligera sobre endpoints rapidos
     def hit_health(_):
-        c, _ = req("GET", f"{base}/api/health")
-        return c
+        return anon.req("GET", "/api/health")[0]
 
     with ThreadPoolExecutor(max_workers=10) as ex:
-        futs = [ex.submit(hit_health, i) for i in range(40)]
-        codes = [f.result() for f in as_completed(futs)]
+        codes = [f.result() for f in as_completed([ex.submit(hit_health, i) for i in range(40)])]
     ok_burst = all(c == 200 for c in codes)
-    cases.append({"id": "P3.5", "ok": ok_burst, "detail": f"40 GET health paralelos: todos 200? {ok_burst}"})
-
+    add("P3.5", ok_burst, f"40 GET health paralelos: todos 200? {ok_burst}")
     return cases
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8000)
+    ap.add_argument("--username", default="")
+    ap.add_argument("--password", default="")
     args = ap.parse_args()
     try:
-        cases = run(args.port)
+        cases = run(args.port, args.username, args.password)
     except OSError as e:
         print(f"No se pudo conectar a 127.0.0.1:{args.port}: {e}")
-        print("Inicia primero: python web/server.py", args.port)
         return 2
 
     out_dir = ROOT / "tests" / "resultados" / "security"
     out_dir.mkdir(parents=True, exist_ok=True)
     payload = {"timestamp": datetime.now().isoformat(timespec="seconds"), "port": args.port, "cases": cases}
     (out_dir / "p3_fuzz_api.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
     fails = [c for c in cases if not c["ok"]]
     for c in cases:
         print(("OK  " if c["ok"] else "FAIL"), c["id"], c["detail"])

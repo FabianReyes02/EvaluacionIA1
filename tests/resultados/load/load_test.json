@@ -1,0 +1,32 @@
+{
+  "timestamp": "2026-11-24T21:30:57",
+  "url": "http://127.0.0.1:8765",
+  "usuarios": 10,
+  "consultas_por_usuario": 1,
+  "total_consultas": 10,
+  "estados": {
+    "200": 10
+  },
+  "respuestas_503_controladas": 0,
+  "latencia_p50_s": 0.274,
+  "latencia_p95_s": 0.309,
+  "permisos": {
+    "anon_inventory": 401,
+    "anon_root": 200,
+    "cliente_inventory": 403,
+    "cliente_admin": 403,
+    "cliente_chat": 200,
+    "health": 200,
+    "admin_login": 200,
+    "admin_inventory": 200,
+    "admin_audit": 200,
+    "admin_sesiones": 200,
+    "admin_panel": 200
+  },
+  "salud": {
+    "code": 200,
+    "body": "{\"llm_disponible\": false, \"proveedor\": null, \"modelo\": null, \"repuestos\": 12, \"correo_modo\": \"dry\", \"correo_configurado\": false, \"indice\": {\"colecciones\": {}}}"
+  },
+  "errores": [],
+  "ok": true
+}

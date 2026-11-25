@@ -7,6 +7,7 @@ tokens y los guardrails que saltaron. Es la evidencia que se usa en los tests.
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,7 @@ LOGS_DIR = ROOT / "logs"
 TRACE_FILE = LOGS_DIR / "trace.jsonl"
 
 MAX_OBSERVACION = 300  # para que el archivo no se dispare
+_LOCK = threading.Lock()  # varias consultas pueden terminar al mismo tiempo
 
 
 def steps_from_messages(messages) -> list[dict]:
@@ -68,9 +70,10 @@ def log_trace(
     }
     if extra:
         registro.update(extra)
-    LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    with open(TRACE_FILE, "a", encoding="utf-8") as f:
-        f.write(json.dumps(registro, ensure_ascii=False) + "\n")
+    with _LOCK:
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        with open(TRACE_FILE, "a", encoding="utf-8") as f:
+            f.write(json.dumps(registro, ensure_ascii=False) + "\n")
     return registro
 
 
