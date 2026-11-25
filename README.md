@@ -104,10 +104,12 @@ cerrar), auditoría de los últimos 30 días y el inventario con alertas de
 stock. El cliente **no** ve inventario ni el panel.
 
 El servidor limita los chats concurrentes (`MAX_CONCURRENT_CHATS=3`), los hace
-esperar hasta `CHAT_QUEUE_WAIT_S=15` y recién entonces responde `503` con
-`retry_after` cuando está saturado; también aplica rate limit por usuario/IP.
-Así 5-10 consultas simultáneas se turnan en vez de tumbar el proceso. Para
-probar carga y permisos:
+esperar hasta `CHAT_QUEUE_WAIT_S=15` y, si sigue saturado, **degrada con
+elegancia**: responde `200` con búsqueda directa en el CSV (`modo_sin_ia: true`,
+`saturado: true` y `retry_after`) en vez de un `503`; también aplica rate limit
+por usuario/IP. Así 5-10 consultas simultáneas se turnan o caen al modo sin IA
+sin tumbar el proceso ni devolver errores de servidor. Para probar carga y
+permisos:
 
 ```bash
 python scripts/load_test.py --url http://127.0.0.1:8000 --users 5 --requests 1 \

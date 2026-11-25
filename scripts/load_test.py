@@ -75,7 +75,11 @@ def run(args) -> dict:
         username = f"lab_{sufijo}_{i}"
         password = "CargaLaboratorio123!"
         c = Client(args.url)
-        code, txt, _ = c.req("POST", "/api/register", {"username": username, "password": password}, timeout=30)
+        code, txt, _ = c.req(
+            "POST", "/api/register",
+            {"username": username, "password": password, "email": f"{username}@lab"},
+            timeout=30,
+        )
         if code not in (200, 400):  # 400 si el nombre ya existe en una corrida repetida
             errores.append(f"registro {username}: {code} {txt[:120]}")
             continue
