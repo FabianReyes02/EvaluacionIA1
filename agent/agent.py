@@ -358,6 +358,53 @@ def run(
         liberar_correo_sesion(token)
 
 
+def fallback_result(
+    user_input: str, session_id: str = "default", retry_after: int | None = None
+) -> dict:
+    """Respuesta útil sin IA cuando el servicio está saturado o en pausa.
+
+    Mantiene el mismo contrato que ``run`` para que la web pueda responder 200
+    en vez de 503 sin romper la interfaz, los guardrails ni la trazabilidad.
+    """
+    inventory = get_inventory()
+    answer, violations = apply_guardrails(_fallback(user_input), inventory)
+    session = get_session(session_id)
+    session.add("user", user_input)
+    session.add("assistant", answer)
+    log_trace(
+        session_id=session_id,
+        entrada=user_input,
+        salida=answer,
+        steps=[],
+        tokens=None,
+        guardrails=violations,
+        used_llm=False,
+        extra={
+            "modelo": (get_provider_config() or {}).get("model"),
+            "reintentos": 0,
+            "rate_limited": True,
+            "limite_diario": False,
+            "saturado": True,
+            "retry_after": retry_after,
+        },
+    )
+    return {
+        "respuesta": answer,
+        "plan": [],
+        "tokens": None,
+        "guardrails": violations,
+        "used_llm": False,
+        "modelo": (get_provider_config() or {}).get("model"),
+        "session_id": session_id,
+        "reintentos": 0,
+        "rate_limited": True,
+        "limite_diario": False,
+        "modo_sin_ia": True,
+        "saturado": True,
+        "retry_after": retry_after,
+    }
+
+
 def health(detailed: bool = True) -> dict:
     """Estado del LLM y de los datos.
 

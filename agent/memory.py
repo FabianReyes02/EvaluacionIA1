@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -31,6 +32,10 @@ MEMORY_FILE = Path(os.getenv("MEMORIA_FILE") or MEMORY_DIR / "memoria.jsonl")
 COL_MEMORY = os.getenv("MEMORIA_COLLECTION", "memoria")
 
 SHORT_TERM_WINDOW = 10  # turnos que se conservan en contexto (ventana deslizante)
+# Un servidor que corre semanas no puede acumular sesiones ni hechos sin límite.
+SESSION_TTL_S = int(os.getenv("CHAT_SESSION_TTL_S") or 8 * 3600)
+MAX_SESSIONS = max(10, int(os.getenv("MAX_CHAT_SESSIONS") or 200))
+MAX_LONG_TERM_REGISTROS = max(50, int(os.getenv("MAX_MEMORIA_REGISTROS") or 500))
 _LONG_TERM_LOCK = threading.RLock()  # JSONL + indice semantico
 
 
@@ -45,11 +50,13 @@ class ShortTermMemory:
         self.window = window
         self._turns: list[dict] = []  # {"role": user|assistant|system, "content": str}
         self._lock = threading.RLock()  # dos turnos de la misma sesion pueden llegar juntos
+        self.last_used = time.time()
 
     def add(self, role: str, content: str) -> None:
         if not content:
             return
         with self._lock:
+            self.last_used = time.time()
             self._turns.append({"role": role, "content": content})
             if len(self._turns) > self.window * 2:  # cada turno son 2 mensajes
                 self._turns = self._turns[-(self.window * 2):]
@@ -63,12 +70,14 @@ class ShortTermMemory:
         """Convierte a mensajes de LangChain para inyectarlas en el agente."""
         mapping = {"user": HumanMessage, "assistant": AIMessage, "system": SystemMessage}
         with self._lock:
+            self.last_used = time.time()
             snapshot = list(self._turns)
         return [mapping.get(t["role"], HumanMessage)(content=t["content"]) for t in snapshot]
 
     def summary(self) -> str:
         """Resumen en texto del historial, para el system prompt."""
         with self._lock:
+            self.last_used = time.time()
             recientes = list(self._turns[-6:])
         if not recientes:
             return "(sin interacciones previas en esta sesion)"
@@ -88,11 +97,21 @@ _LOCK = threading.Lock()
 
 
 def get_session(session_id: str = "default") -> ShortTermMemory:
-    """Sesion de memoria corto plazo (singleton por id)."""
+    """Sesion de memoria corto plazo (singleton por id, con TTL y LRU)."""
+    ahora = time.time()
     with _LOCK:
+        # Expiran primero las sesiones inactivas.
+        for sid, ses in list(_SESSIONS.items()):
+            if ahora - ses.last_used > SESSION_TTL_S:
+                _SESSIONS.pop(sid, None)
         if session_id not in _SESSIONS:
+            if len(_SESSIONS) >= MAX_SESSIONS:
+                mas_vieja = min(_SESSIONS, key=lambda k: _SESSIONS[k].last_used)
+                _SESSIONS.pop(mas_vieja, None)
             _SESSIONS[session_id] = ShortTermMemory(session_id)
-        return _SESSIONS[session_id]
+        sesion = _SESSIONS[session_id]
+        sesion.last_used = ahora
+        return sesion
 
 
 def reset_session(session_id: str = "default") -> None:
@@ -136,6 +155,18 @@ class LongTermMemory:
                 )
             except Exception as exc:
                 registro["aviso_chroma"] = f"{exc.__class__.__name__}"
+
+            # Tope de registros: el JSONL no crece sin límite en un servidor
+            # que corre durante semanas.
+            try:
+                lineas = MEMORY_FILE.read_text(encoding="utf-8").splitlines()
+                if len(lineas) > MAX_LONG_TERM_REGISTROS:
+                    MEMORY_FILE.write_text(
+                        "\n".join(lineas[-MAX_LONG_TERM_REGISTROS:]) + "\n",
+                        encoding="utf-8",
+                    )
+            except Exception:
+                pass
         return registro
 
     @staticmethod

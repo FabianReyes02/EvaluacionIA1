@@ -38,6 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from agent.agent import (  # noqa: E402
     circuit_abierto,
     circuit_reintentar_en,
+    fallback_result,
     health,
     registrar_resultado,
     run,
@@ -58,6 +59,9 @@ CHAT_QUEUE_WAIT_S = max(0.0, float(os.getenv("CHAT_QUEUE_WAIT_S") or 15))
 ALLOWED_ORIGIN = (os.getenv("REPUSTOS_ALLOWED_ORIGIN") or "").strip()
 
 _CHAT_SEMAPHORE = threading.BoundedSemaphore(MAX_CONCURRENT_CHATS)
+# El socket se abre antes de precalentar el RAG: el health responde enseguida
+# con estado "cargando" y pasa a "listo" cuando el índice está disponible.
+_READY = threading.Event()
 _RATE_LOCK = threading.Lock()
 _RATE_BUCKETS: dict[str, deque] = {}
 _CSP = (
@@ -154,6 +158,13 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- sesion --------------------------------------------------------------
     def _client_ip(self) -> str:
+        # Nginx corre en la misma máquina y fija X-Real-IP. Solo confiamos en
+        # ese header cuando la petición viene del loopback; si viniera de
+        # internet, un cliente podría falsificarlo para evadir el rate limit.
+        if self.client_address[0] in ("127.0.0.1", "::1"):
+            real_ip = (self.headers.get("X-Real-IP") or "").strip()
+            if real_ip:
+                return real_ip[:64]
         forwarded = self.headers.get("X-Forwarded-For") or ""
         if forwarded:
             return forwarded.split(",", 1)[0].strip()[:64]
@@ -213,6 +224,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/health":
             try:
                 info = health(detailed=False)
+                info["listo"] = _READY.is_set()
+                info["estado"] = "listo" if _READY.is_set() else "cargando"
                 try:
                     from agent.rag import stats
 
@@ -366,20 +379,24 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "demasiadas consultas desde esta IP"}, 429)
         if circuit_abierto():
             espera = circuit_reintentar_en()
-            return self._json(
-                {"error": "servicio de IA en pausa breve por saturacion", "retry_after": espera},
-                503,
+            auth.auditoria(
+                "saturado", usuario=user["username"], rol=user["rol"], ip=ip,
+                user_agent=ua, detalle="circuit breaker",
             )
+            # 200 con respuesta útil del CSV: nunca 5xx durante una ráfaga.
+            return self._json(fallback_result(
+                message, session_id=f"u{user['id']}:{session}", retry_after=espera
+            ))
         # Espera acotada: con 5-10 usuarios se van turnando, pero ningun hilo
         # espera mas de CHAT_QUEUE_WAIT_S (descartar rapido si no da alcance).
         if not _CHAT_SEMAPHORE.acquire(timeout=CHAT_QUEUE_WAIT_S):
             auth.auditoria("saturado", usuario=user["username"], rol=user["rol"], ip=ip,
                            user_agent=ua, detalle="cola de chats llena")
-            return self._json(
-                {"error": "servidor ocupado; reintenta en unos segundos",
-                 "retry_after": int(CHAT_QUEUE_WAIT_S) or 5},
-                503,
-            )
+            # Degradación elegante: respuesta directa del CSV, sin 503.
+            return self._json(fallback_result(
+                message, session_id=f"u{user['id']}:{session}",
+                retry_after=int(CHAT_QUEUE_WAIT_S) or 5,
+            ))
 
         try:
             resultado = run(
@@ -468,14 +485,21 @@ def main():
 
     auth.inicializar()
     auth.ensure_bootstrap_admin()
-    try:
-        from agent.rag import preload
-
-        preload()
-    except Exception as exc:
-        print(f"[web] no se pudo precalentar el RAG: {exc.__class__.__name__}: {exc}")
-
+    # Enlazar primero: /api/health responde "cargando" mientras el RAG se
+    # precalienta en segundo plano, en vez de dar connection refused.
     server = RepuestosHTTPServer((host, port), Handler)
+
+    def _preload():
+        try:
+            from agent.rag import preload
+
+            preload()
+        except Exception as exc:
+            print(f"[web] no se pudo precalentar el RAG: {exc.__class__.__name__}: {exc}")
+        finally:
+            _READY.set()
+
+    threading.Thread(target=_preload, name="rag-preload", daemon=True).start()
     url = f"http://{host}:{port}"
     print("Repuestos Sur - asistente IA")
     print(f"Interfaz: {url}/login  (Ctrl+C para detener)")
