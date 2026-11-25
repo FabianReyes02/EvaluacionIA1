@@ -434,7 +434,7 @@ SMTP_PORT="2525"
 SMTP_TLS="0"
 SMTP_SSL="0"
 SMTP_USER="<usuario del panel>"
-SMTP_PASSWORD="<contraseña del panel>"
+SMTP_PASSWORD=" <contraseña del panel> "
 ```
 Los puertos 2525/587/465 de `sandbox.smtp.mailtrap.io` y el 587 de
 `smtp.gmail.com` están **abiertos** desde la máquina de desarrollo
@@ -513,7 +513,7 @@ python -m venv .venv && .venv\Scripts\activate
 pip install -r requirements.txt
 
 # 2. Credenciales
-copy .env.example .env        # pegar GROQ_API_KEY (gsk_...)
+copy .env.example .env        # pegar GROQ_API_KEY (valor de tu key)
                               # envío de correo (opcional): SMTP_USER/SMTP_PASSWORD + EMAIL_MODE="smtp"
 
 # 3. Ingesta RAG (una vez; --force reconstruye, --stats muestra estado)

@@ -34,6 +34,15 @@ python scripts/fuzz_api_web.py --port 8765
 
 Salida: `tests/resultados/security/p3_fuzz_api.json`.
 
+Contra la URL pública (no gasta tokens, crea un usuario de prueba):
+
+```bash
+python scripts/fuzz_public_url.py --base https://34.201.171.124
+```
+
+Salida: `tests/resultados/security/p3_public_url.{json,md}`. Verifica HTTPS/HSTS,
+CSP con nonce, cookie `Secure`, `Origin`, traversal y una ráfaga de health.
+
 ## P4 — Red team prompts (consume cuota del LLM)
 
 ```bash
@@ -43,22 +52,27 @@ python scripts/redteam_prompts.py --solo P4.1
 
 Salida: `tests/resultados/security/redteam_<timestamp>.json|.md`.
 
-**Nota:** los veredictos automáticos son heurísticos; en la defensa revisar las respuestas completas.
+**Nota:** los veredictos automáticos son heurísticos; en la defensa revisar las respuestas completas. La corrida archivada omitió **P4.3** (correo) por instrucción del proyecto de no trabajar en envío de cotizaciones; P4.4 y P4.5 se revisaron manualmente como defendidos.
 
 ## P5 — Resiliencia 429/TPD
 
-Probar manualmente o con mocks (ver `agent/llm_client.py`: `is_rate_limit_error`, `is_daily_limit_error`, `ask_llm`, y `agent/agent.py`: `_invoke_with_retry`). Ejemplo rápido en REPL:
+Sin gastar tokens:
 
-```python
-from agent.llm_client import is_daily_limit_error
-class E(Exception): pass
-e = E("tokens per day (TPD) reached")
-print(is_daily_limit_error(e))
+```bash
+python scripts/p5_rate_limit_checks.py
 ```
+
+Salida: `tests/resultados/security/p5_rate_limit_checks.{json,md}`. Cubre
+`is_rate_limit_error`, `is_daily_limit_error`, `daily_limit_reset_hint`, backoff,
+circuit breaker y la degradación elegante a CSV.
 
 ## P6 — Checklist AWS/Nginx
 
-Ver `docs/CHECKLIST_ENTREGA.md` y la sección de despliegue en el chat; repetir P3/P4 contra URL pública solo con control de costes y rate limit activo.
+Ver `docs/CHECKLIST_ENTREGA.md` (sección 3.b) y `deploy/README_AWS.md`. El
+despliegue actual usa HTTPS con certificado autofirmado, HSTS, cookie `Secure`,
+CSP con nonce y `Origin` verificado; la evidencia P3 pública, P4, P5 y la prueba
+de carga están archivadas en `tests/resultados/`. Para un certificado confiable
+hace falta un dominio con Certbot/ALB.
 
 ## Limitación actual del entorno
 

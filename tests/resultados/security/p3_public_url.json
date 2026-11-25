@@ -1,0 +1,86 @@
+{
+  "timestamp": "2026-11-24T23:41:43",
+  "base": "https://34.201.171.124",
+  "casos": [
+    {
+      "id": "P3.1",
+      "ok": true,
+      "detalle": "health -> 200"
+    },
+    {
+      "id": "P3.2",
+      "ok": true,
+      "detalle": "HSTS presente en health"
+    },
+    {
+      "id": "P3.3",
+      "ok": true,
+      "detalle": "HTTP -> 301 https://34.201.171.124/api/health"
+    },
+    {
+      "id": "P3.4",
+      "ok": true,
+      "detalle": "/ anonimo -> 303"
+    },
+    {
+      "id": "P3.5",
+      "ok": true,
+      "detalle": "/admin anonimo -> 303"
+    },
+    {
+      "id": "P3.6",
+      "ok": true,
+      "detalle": "/api/inventory anonimo -> 401"
+    },
+    {
+      "id": "P3.7",
+      "ok": true,
+      "detalle": "CSP con nonce y sin unsafe-inline"
+    },
+    {
+      "id": "P3.8",
+      "ok": true,
+      "detalle": "registro de prueba -> 200"
+    },
+    {
+      "id": "P3.9",
+      "ok": true,
+      "detalle": "login -> 200, cookie Secure=True"
+    },
+    {
+      "id": "P3.10",
+      "ok": true,
+      "detalle": "Content-Type incorrecto -> 415"
+    },
+    {
+      "id": "P3.11",
+      "ok": true,
+      "detalle": "cuerpo grande -> 400"
+    },
+    {
+      "id": "P3.12",
+      "ok": true,
+      "detalle": "traversal -> 400 (Nginx puede rechazar con 400 antes de la app)"
+    },
+    {
+      "id": "P3.13",
+      "ok": true,
+      "detalle": "traversal -> 400 (Nginx puede rechazar con 400 antes de la app)"
+    },
+    {
+      "id": "P3.14",
+      "ok": true,
+      "detalle": "Origin cross-site -> 403"
+    },
+    {
+      "id": "P3.15",
+      "ok": true,
+      "detalle": "20 GET paralelos: todos 200? True"
+    }
+  ],
+  "resumen": {
+    "total": 15,
+    "ok": 15,
+    "fallos": []
+  }
+}

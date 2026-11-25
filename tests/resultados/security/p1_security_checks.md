@@ -1,5 +1,5 @@
 # P1 — security_checks (generado)
-Fecha: 2026-11-23T06:18:47
+Fecha: 2026-11-24T23:41:36
 
 ## 1.1 Archivos trackeados que NO deberian estar (esperado: ninguno)
 - OK: ninguno detectado
@@ -10,4 +10,4 @@ Fecha: 2026-11-23T06:18:47
 
 ## 1.3 Posibles secretos en archivos trackeados
 
-- REVISAR: `AVANCES.md` — posible secreto hardcodeado (revisar manualmente)
+- OK: sin coincidencias heuristicas (aun asi revisar .env local)

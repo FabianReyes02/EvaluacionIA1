@@ -114,7 +114,20 @@ Mailtrap. Para no mandar correos durante los evals:
 | `tests/resultados/eval_reporte_16casos_2026-10-21.md` / `.json` | **16/16 (100 %)** — corrida histórica con envío SMTP real a Mailtrap, 2026-10-21 |
 | `tests/resultados/eval_reporte_15casos_qwen_2026-10-19.md` / `.json` | **15/15 (100 %)** — corrida histórica con `qwen/qwen3.8-27b` (suite de 15 casos), 2026-10-19 |
 
-## 3.b Pendientes conocidos (no bloquean, documentar en informe)
+## 3.b Evidencia de seguridad y resiliencia (P1–P6)
+
+| Archivo | Contenido |
+|---|---|
+| `tests/resultados/security/p1_security_checks.md` / `.json` | Higiene del repo: sin archivos prohibidos trackeados ni patrones peligrosos; sin coincidencias de secretos tras corregir placeholders de documentación. |
+| `tests/resultados/security/p2_malicious_payloads.json` | Payloads raros sobre validadores y guardrails (generada antes del soporte de correos de prueba; no se volvió a ejecutar para no cambiar la lógica de correos). |
+| `tests/resultados/security/p3_public_url.md` / `.json` | **15/15** contra `https://34.201.171.124`: HSTS, HTTP→HTTPS 301, login 303, inventario 401, CSP con nonce sin `unsafe-inline`, cookie `Secure`, `415`/`400` por body, traversal bloqueado por Nginx, `Origin` cross-site 403 y 20 health paralelos OK. |
+| `tests/resultados/security/p5_rate_limit_checks.md` / `.json` | **14/14** con mocks: detección 429 vs TPD, backoff, circuit breaker (apertura, cooldown y cierre por límite diario) y degradación elegante con respuesta del CSV. |
+| `tests/resultados/security/redteam_20261124_234358.md` / `.json` | Red team P4.1/P4.2/P4.4/P4.5/P4.6 con `openai/gpt-oss-120b`: sin secretos, sin system prompt, sin comandos y sin venta imposible; P4.6 marcó el guardrail `codigo_inexistente:ALT-99`. **P4.3 (correo) omitido** por instrucción de no trabajar en envío de cotizaciones. P4.4/P4.5 revisados manualmente como defendidos. |
+| `tests/resultados/load/load_test.json` | **20/20 respuestas 200**, 0 `503`, p50 15,5 s / p95 40,3 s, 10 usuarios × 2 consultas sobre HTTPS. |
+
+El servidor además se reinicia con health disponible de inmediato (`estado: "cargando"` → `listo`), y la cola saturada responde `200` en modo sin IA en vez de `503`.
+
+## 3.c Pendientes conocidos (no bloquean, documentar en informe)
 
 - `uv.lock` desactualizado (proyecto corre con `pip` + `requirements.txt`, D11).
 - Memoria largo plazo recorta por llegada, no resuelve contradicciones.
@@ -125,3 +138,9 @@ Mailtrap. Para no mandar correos durante los evals:
   de evidencia del 2026-10-21 se hizo en modo `smtp` (destino: sandbox de
   Mailtrap, que retiene los mensajes y no los entrega a nadie); el 2026-10-22 se
   validó además con **Gmail real** y contraseña de aplicación.
+- El HTTPS usa certificado **autofirmado** mientras no haya dominio público; para
+  quitar la advertencia del navegador hace falta Certbot/ALB con un dominio.
+- Las credenciales AWS y la PEM compartidas durante el laboratorio deberían
+  rotarse en la próxima sesión (son temporales y vencen con el lab).
+- P4.3 (correo malicioso) y P2 no se re-ejecutaron: el primero quedó omitido por
+  instrucción del proyecto y el segundo por el soporte de correos de prueba.

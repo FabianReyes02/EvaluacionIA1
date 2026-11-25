@@ -72,7 +72,7 @@ En el servidor, crea `.env` en la raíz del proyecto (no en git). Mínimo:
 
 ```env
 LLM_PROVIDER="groq"
-GROQ_API_KEY="gsk_..."
+GROQ_API_KEY="<pega tu key de Groq>"
 GROQ_MODEL="qwen/qwen3.8-27b"
 REPUSTOS_HOST="127.0.0.1"
 REPUSTOS_PORT="8000"

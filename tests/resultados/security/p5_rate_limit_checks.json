@@ -1,0 +1,94 @@
+{
+  "timestamp": "2026-11-24T23:41:36",
+  "casos": [
+    {
+      "id": "P5.1a",
+      "descripcion": "is_rate_limit_error(RateLimitError)",
+      "ok": true,
+      "detalle": "esperado=True, obtenido=True"
+    },
+    {
+      "id": "P5.1b",
+      "descripcion": "is_rate_limit_error(OpenAIRateLimitError)",
+      "ok": true,
+      "detalle": "esperado=True, obtenido=True"
+    },
+    {
+      "id": "P5.1c",
+      "descripcion": "is_rate_limit_error(ErrorGenerico)",
+      "ok": true,
+      "detalle": "esperado=True, obtenido=True"
+    },
+    {
+      "id": "P5.1d",
+      "descripcion": "is_rate_limit_error(ErrorGenerico)",
+      "ok": true,
+      "detalle": "esperado=False, obtenido=False"
+    },
+    {
+      "id": "P5.2a",
+      "descripcion": "detecta TPD",
+      "ok": true,
+      "detalle": "Rate limit reached on tokens per day (TPD): Limit 200000"
+    },
+    {
+      "id": "P5.2b",
+      "descripcion": "no confunde TPM con TPD",
+      "ok": true,
+      "detalle": "Rate limit reached, try again in 20s"
+    },
+    {
+      "id": "P5.3",
+      "descripcion": "parsea tiempo de reinicio",
+      "ok": true,
+      "detalle": "obtenido='12m'"
+    },
+    {
+      "id": "P5.3b",
+      "descripcion": "parsea horas",
+      "ok": true,
+      "detalle": "obtenido='1h 5m'"
+    },
+    {
+      "id": "P5.4",
+      "descripcion": "backoff creciente",
+      "ok": true,
+      "detalle": "esperas=[20.0, 40.0, 60.0], base=20.0"
+    },
+    {
+      "id": "P5.5a",
+      "descripcion": "se abre tras 2 429",
+      "ok": true,
+      "detalle": "fallos=2"
+    },
+    {
+      "id": "P5.5b",
+      "descripcion": "un OK reinicia el contador sin acortar el enfriamiento",
+      "ok": true,
+      "detalle": "fallos=0, sigue abierto hasta el cooldown"
+    },
+    {
+      "id": "P5.5c",
+      "descripcion": "se cierra solo tras el cooldown",
+      "ok": true,
+      "detalle": "cooldown vencido"
+    },
+    {
+      "id": "P5.5d",
+      "descripcion": "TPD no dispara circuit breaker",
+      "ok": true,
+      "detalle": "limite_diario=True reinicia el contador"
+    },
+    {
+      "id": "P5.6",
+      "descripcion": "saturación devuelve 200 con CSV",
+      "ok": true,
+      "detalle": "retry_after=7"
+    }
+  ],
+  "resumen": {
+    "total": 14,
+    "ok": 14,
+    "fallos": []
+  }
+}

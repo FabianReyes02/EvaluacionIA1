@@ -44,6 +44,8 @@
 
 | D18 | Seguridad de la web | **`web/auth.py`** (SQLite `data/internal/auth.db`): PBKDF2-SHA256, **registro abierto** de clientes, sesiones server-side (solo SHA-256 del token en BD), cookie `HttpOnly; SameSite=Strict`, bloqueo por intentos, auditoría con retención de 30 días. Admin inicial desde `ADMIN_USER`/`ADMIN_PASSWORD` en `.env`. Matriz de roles única en `web/server.py`; CORS restringido y `/api/health` mínimo | Un `curl` cualquiera veía el inventario y no había forma de distinguir compañeros de administradores; las claves no deben viajar en git | Basic Auth sin revocación, JWT sin logout real, o dejar el inventario público "porque es un prototipo" |
 | D19 | Concurrencia del servidor | Cola acotada (`MAX_CONCURRENT_CHATS`) con espera `CHAT_QUEUE_WAIT_S` y degradación elegante: respuesta `200` en modo sin IA + `retry_after` en vez de `503`; rate limit por usuario/IP; circuit breaker ante 429; locks en RAG (cliente/embeddings/reindex), memoria, traza y SQLite; `preload()` en segundo plano con health `cargando`/`listo` | Con 5-10 usuarios el servidor caía: `ThreadingHTTPServer` sin límite, reindexados simultáneos y ráfagas contra el TPM gratis de Groq | Subir hilos infinitos o dormir 20-80s dentro de cada petición |
+| D20 | Hardening web | HTTPS obligatorio (HTTP→HTTPS, HSTS, cookie `Secure`), CSP con nonce por respuesta (sin `unsafe-inline`), verificación de `Origin` en POST/PATCH/DELETE y `X-Real-IP` solo desde loopback | El profesor revisaría vulnerabilidades: contraseñas en claro, CSRF, XSS por estilos/scripts inline e IP falsificable para evadir rate limits | Confiar en SameSite sin `Origin`, o dejar CSP con `unsafe-inline` |
+| D21 | Escrituras sensibles y memoria | `registrar_venta` con doble confirmación (token con TTL de 5 min: la primera llamada no descuenta stock) y memoria de largo plazo particionada por usuario en JSONL + Chroma | Un cliente podía confirmar una compra con un solo mensaje y leer/inyectar hechos de otros clientes en su prompt | dar permisos de venta solo al admin (rompía la prueba de venta de los evaluadores) o memoria global compartida |
 
 Convencion de commits: mensajes simples y en espanol durante todo el semestre.
 
@@ -392,6 +394,18 @@ EvaluacionIA1/
      tokens, `EMAIL_MODE="dry"`); la suite completa de 18 no se repitió
      porque al 120b le quedaban ~90 000 tokens TPD y una corrida pide ~100 000
      (la evidencia 18/18 sigue válida: los criterios no cambiaron).
+
+- **2026-11-24/25 — Fases 1–3 de endurecimiento (D19/D20/D21).** Para la
+  evaluación con concurrentes y revisión de seguridad: la cola saturada dejó de
+  responder `503` y ahora degrada a CSV con `200` + `retry_after`; el health se
+  sirve desde el primer momento con `estado: "cargando"`; Nginx sobrescribe
+  `X-Forwarded-For`, subió timeouts a 180 s y pasó a HTTPS con HSTS, cookie
+  `Secure` y CSP con nonce (sin `unsafe-inline`); se añadió verificación de
+  `Origin`, memoria LRU/TTL y por usuario, y doble confirmación para ventas.
+  Evidencia: 37 pruebas pytest, P3 público 15/15, P5 14/14, P4 (sin el caso de
+  correo) revisado y load test de 10×2 con **20/20 en 200 y 0 `503`** sobre
+  HTTPS. Queda para otra sesión el envío real de cotizaciones y la rotación de
+  credenciales del laboratorio.
 
 ## 8. En progreso (actualizado 2026-10-22)
 
