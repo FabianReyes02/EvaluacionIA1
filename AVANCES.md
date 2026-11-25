@@ -642,3 +642,51 @@ hallazgo de que cualquiera podía hacer `curl /api/inventory`, se cerró D18/D19
   `cliente_admin: 403`, endpoints de admin 200. Auditoría: 20 eventos,
   8 sesiones activas y 6 usuarios. Un chat separado respondió con ALT-01
   ($289.990, stock 7) usando `openai/gpt-oss-120b` y 0 reintentos.
+
+## Actualización 2026-11-25 — Correo de registro, resiliencia y cierre de seguridad
+
+### Correo asociado a la cuenta (entregado)
+- `/register` y el alta desde `/admin` piden **correo electrónico**; se aceptan
+  direcciones ficticias (`probador1@lab`) porque son solo para quienes prueban
+  el agente. `web/auth.py` migró la tabla `usuarios` con una columna `email` sin
+  perder las cuentas existentes.
+- Ese correo viaja del servidor al agente por petición y `enviar_cotizacion_email`
+  lo usa **siempre** como destinatario, aunque el chat escriba otra dirección;
+  ya no se pide el correo en la conversación. La primera llamada de
+  `registrar_venta` solo prepara la venta y devuelve un token; la segunda con
+  `confirmado=true` ejecuta el descuento.
+
+### Resiliencia y hardening (Fases 1–3)
+- La cola saturada y el circuit breaker dejaron de responder `503`: ahora
+  devuelven `200` con búsqueda directa del CSV (`modo_sin_ia`, `saturado`,
+  `retry_after`). El socket se abre antes de precalentar el RAG, así que health
+  responde de inmediato con `estado: "cargando"` y luego `listo`.
+- Memoria de sesión con TTL/LRU y memoria de largo plazo **particionada por
+  usuario** (JSONL + colección Chroma por `u{id}`).
+- Nginx pasó a **HTTPS** (certificado autofirmado, HSTS, cookie `Secure`,
+  `REPUSTOS_HTTPS=1`), CSP con nonce por respuesta (sin `unsafe-inline`),
+  verificación de `Origin` en POST/PATCH/DELETE y `X-Real-IP` solo desde
+  loopback.
+- Evidencia: **37 pruebas** pytest; P1 limpio; P3 público **15/15**; P5 **14/14**;
+  P4.1/P4.2/P4.4/P4.5/P4.6 revisados; load test de 10×2 sobre HTTPS con
+  **20/20 respuestas 200 y 0 `503`** (p50 15,5 s / p95 40,3 s).
+- Commits: `8b7b8e7` (correo de registro), `bc43a93`/`bd6e457` (Fase 1),
+  `b9be2d2`/`a6d040c` (Fase 2) y `0e8aa94` (Fase 3).
+
+### Pendiente para la próxima sesión
+- [ ] **Envío real de cotizaciones**: el servidor sigue con `EMAIL_MODE="dry"`,
+      por lo que la herramienta deja el `.eml` con el PDF y responde
+      *"preparada, NO se envió a <correo>"*. Para enviar de verdad hay que elegir
+      proveedor (Gmail con destinatarios reales, Mailtrap o buzón local en la
+      EC2 que acepte correos falsos), configurar `SMTP_*` en el `.env` del
+      servidor, poner `EMAIL_MODE="smtp"`, dejar `EMAIL_DOMAINS_ALLOWLIST=""` y
+      reiniciar `repuestossur`.
+- [ ] Decidir si la **doble confirmación** se extiende también a
+      `enviar_cotizacion_email` (hoy solo aplica a `registrar_venta`).
+- [ ] Si cambia la validación de correos, re-ejecutar P2 y el caso **P4.3**
+      (omitido en esta corrida por instrucción de no tocar correos).
+- [ ] Obtener un **dominio + Certbot/ALB** para reemplazar el certificado
+      autofirmado y quitar la advertencia del navegador.
+- [ ] **Rotar** las credenciales AWS y la PEM que se compartieron en el lab.
+- [ ] Sincronizar el checkout de la EC2 con `0e8aa94` (solo documentación y
+      evidencias; no requiere reinicio).

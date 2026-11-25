@@ -22,8 +22,8 @@ llamar, con qué argumentos y cuándo detenerse.
 
 | Apartado | Dónde está implementado |
 |---|---|
-| **A. Agente con framework** (consulta, escritura, razonamiento) | `agent/agent.py` (`create_agent` de LangChain) + `agent/tools.py` (6 tools) |
-| **B. Memoria corto y largo plazo** | `agent/memory.py` (ventana de 10 turnos + `memoria.jsonl` + colección Chroma) |
+| **A. Agente con framework** (consulta, escritura, razonamiento) | `agent/agent.py` (`create_agent` de LangChain) + `agent/tools.py` (9 herramientas) |
+| **B. Memoria corto y largo plazo** | `agent/memory.py` (ventana de 10 turnos + `memoria.jsonl`/Chroma **por usuario**, con TTL/LRU) |
 | **C. Planificación y decisiones** | Loop plan→tool→observación, `agent/guardrails.py` y `tests/` |
 | **D. Documentación técnica** | Este README + `agents.md` (decisiones de diseño) + `docs/diagramas.md` (orquestación y flujos, IE7) |
 | **E / F. Redacción, diagramas y flujos** | Informe del equipo + `docs/diagramas.md` + `tests/resultados/eval_reporte.md` (trazas reales) |
@@ -35,10 +35,10 @@ llamar, con qué argumentos y cuándo detenerse.
 |---|---|
 | Lenguaje | Python 3.11+ (probado en 3.12) |
 | Framework de agentes | **LangChain Agents** (`langchain.agents.create_agent`) |
-| LLM | Groq `qwen/qwen3.8-27b` (gratis) u OpenAI `gpt-4o-mini`, intercambiable por `LLM_PROVIDER` |
+| LLM | Groq (`qwen/qwen3.8-27b` u `openai/gpt-oss-120b`) u OpenAI `gpt-4o-mini`, intercambiable por `LLM_PROVIDER`; en producción corre `openai/gpt-oss-120b` |
 | Vector store | **ChromaDB** persistente en `chroma_db/` |
 | Embeddings | `paraphrase-multilingual-MiniLM-L12-v2` locales (384d, sin costo de API) |
-| Interfaz | Página web local servida con la estándar `http.server` (sin frameworks) |
+| Interfaz | Web con `http.server` de la stdlib; en AWS detrás de **Nginx + HTTPS** |
 
 ## ⚙️ Instalación
 
@@ -120,6 +120,9 @@ permisos:
 ```bash
 python scripts/load_test.py --url http://127.0.0.1:8000 --users 5 --requests 1 \
   --admin-user admin --admin-password '...'
+
+# Contra el despliegue (el script acepta el certificado autofirmado):
+python scripts/load_test.py --url https://<IP> --users 10 --requests 2
 ```
 
 ### 2. Línea de comandos
@@ -155,6 +158,10 @@ Un caso que no alcanza a llegar al LLM por límite de cuota del proveedor queda
 **pendiente** (no cuenta como aprobado ni como fallado) y la corrida se detiene
 para no gastar cuota en casos que tampoco podrían ejecutarse.
 
+El caso **C17 (venta)** tiene dos turnos: el primero prepara la venta y devuelve
+un token, y el segundo confirma con `confirmado=true`. La evidencia 18/18 se
+generó antes de ese cambio; los criterios del caso no se modificaron.
+
 Salida: `tests/resultados/eval_reporte.md` y `.json` (tabla de resultados,
 herramientas usadas, guardrails activados, reintentos por 429, tokens y
 respuesta de cada caso). La corrida histórica del 2026-10-19 (suite de 15
@@ -163,8 +170,10 @@ casos) queda archivada en `eval_reporte_15casos_qwen_2026-10-19.{md,json}`.
 ### 4. Pruebas de las herramientas (sin gastar tokens)
 
 ```bash
-python -m pytest tests/test_herramientas.py -v   # 20 tests: BD, ventas, stock, PDF y correo
-python scripts/verify_env.py                     # LLM, tool-calling, agente, embeddings y Chroma
+python -m pytest tests -q                 # 37 pruebas: auth, tools, resiliencia y web
+python scripts/verify_env.py              # LLM, tool-calling, agente, embeddings y Chroma
+python scripts/p5_rate_limit_checks.py    # 429/TPD y circuit breaker, sin gastar tokens
+python scripts/fuzz_public_url.py --base https://<IP>   # P3 contra el despliegue
 ```
 
 Para el correo, sin pasar por el LLM:
@@ -181,57 +190,67 @@ python scripts/test_email.py --dry                  # deja el .eml con el PDF ad
 ```
 EvaluacionIA1/
 ├── agent/
-│   ├── agent.py          Orquestador: crea el agente y ejecuta cada interaccion
-│   ├── tools.py          9 herramientas (consulta / escritura / memoria / venta)
-│   ├── memory.py         Memoria de corto y largo plazo
+│   ├── agent.py          Orquestador, circuit breaker y degradación elegante
+│   ├── tools.py          9 herramientas (consulta, escritura, memoria, venta con doble confirmación)
+│   ├── memory.py         Memoria corta (TTL/LRU) y larga por usuario (JSONL + Chroma)
 │   ├── rag.py            Ingesta PDF+CSV -> embeddings -> ChromaDB
-│   ├── guardrails.py     Verificacion POST-LLM (codigos y stock)
+│   ├── guardrails.py     Verificación POST-LLM (códigos y stock)
 │   ├── prompts.py        System prompt y prompts de la CLI
-│   ├── llm_client.py     Cliente LLM intercambiable (Groq/OpenAI)
+│   ├── llm_client.py     Cliente LLM intercambiable (Groq/OpenAI) + detección 429/TPD
 │   └── trace.py          Log JSONL de las decisiones (logs/trace.jsonl)
 ├── tools/
-│   ├── inventory_lookup.py   Busqueda y diagnostico sobre el CSV
+│   ├── inventory_lookup.py   Búsqueda y diagnóstico sobre el CSV
 │   ├── db.py                 Base interna SQLite: stock real, ventas y movimientos
-│   ├── pdf_cotizacion.py     Genera el PDF de cotizacion/comprobante (sin dependencias)
-│   └── email_sender.py       Armado y envio del correo (SMTP real, dry-run opcional)
+│   ├── pdf_cotizacion.py     Genera el PDF de cotización/comprobante (sin dependencias)
+│   └── email_sender.py       Armado/envío SMTP (en producción, modo dry)
 ├── ingestion/
 │   └── ingest.py         CLI de ingesta RAG
 ├── web/
-│   ├── server.py         Servidor HTTP + API JSON
-│   └── static/index.html Interfaz (chat + búsqueda + inventario)
+│   ├── server.py         Servidor HTTP + API JSON + CSP + Origin + cola de chats
+│   ├── auth.py           Usuarios, sesiones, roles y auditoría (SQLite)
+│   └── static/           index.html, login.html, register.html, admin.html
+├── deploy/
+│   ├── README_AWS.md / REINICIO_LAB.md
+│   ├── nginx-repuestossur.conf   Reverse proxy HTTPS + HSTS
+│   ├── repuestossur.service / repuestossur-ec2user.service
+│   └── generar_certificado_autofirmado.sh
 ├── tests/
-│   ├── eval_dataset.json 18 casos con lo esperado y su justificación
-│   ├── eval_agent.py     Ejecuta la suite y genera el reporte
-│   ├── test_herramientas.py  Pytest de las tools (sin gastar tokens del LLM)
-│   └── resultados/       Evidencia generada (eval_reporte.{md,json} + corrida 15/15 archivada)
+│   ├── eval_dataset.json / eval_agent.py
+│   ├── test_auth.py / test_herramientas.py / test_resiliencia.py
+│   └── resultados/       eval_reporte.*, load/ y security/ (P1–P5)
 ├── docs/
 │   ├── diagramas.md      Orquestación y flujos (Mermaid, IE7/IE9)
 │   └── CHECKLIST_ENTREGA.md  Verificación + entregables AVA/email
 ├── scripts/
-│   ├── verify_env.py         Verifica LLM, tool-calling, agente, embeddings y Chroma
-│   ├── configurar_correo.py  Configura las credenciales SMTP en .env y prueba el login
-│   ├── test_email.py         Prueba el correo (preflight / envío real / dry-run)
-│   └── generate_sample_data.py  Genera CSV y manuales PDF de ejemplo
+│   ├── verify_env.py / configurar_correo.py / test_email.py / generate_sample_data.py
+│   ├── load_test.py / fuzz_api_web.py / fuzz_public_url.py
+│   ├── security_checks.py / simulate_malicious_payloads.py / redteam_prompts.py
+│   └── p5_rate_limit_checks.py
 ├── data/
 │   ├── internal/inventory.csv
 │   ├── external/manuales/*.pdf
-│   ├── memory/           Memoria persistente del agente (JSONL)
-│   └── exports/          Cotizaciones del agente (PDF + copia JSON, .eml, envios.jsonl)
+│   ├── memory/           Memoria persistente del agente (JSONL por usuario)
+│   └── exports/          Cotizaciones del agente (PDF + JSON, .eml, envios.jsonl)
 ├── main.py               CLI interactiva
-├── agents.md             Memoria de decisiones del equipo
+├── agents.md             Memoria de decisiones del equipo (D1–D21)
+├── AVANCES.md            Bitácora de avances y pendientes
 └── requirements.txt      Dependencias congeladas
 ```
 
 ## 🧠 Cómo funciona
 
 1. **Entrada** del usuario (chat o CLI).
-2. Se arma el contexto: catálogo del CSV + memoria de largo plazo + resumen de
-   los últimos turnos (memoria de corto plazo).
+2. Se arma el contexto: catálogo del CSV + memoria de largo plazo **de ese
+   usuario** + resumen de los últimos turnos (memoria de corto plazo) + correo
+   de la cuenta si está autenticado.
 3. El LLM **planifica**: elige una o varias herramientas y sus argumentos.
 4. **Observa** el resultado y decide si necesita otra llamada o responde.
 5. **Guardrails** re-verifican la respuesta contra el CSV: ningún código
-   inventado y toda alerta de stock presente.
+   inventado y toda alerta de stock presente. Las ventas requieren un token de
+   confirmación en una segunda llamada antes de descontar stock.
 6. Se guarda la **traza** (`logs/trace.jsonl`) y se actualiza la memoria.
+   Si el proveedor está saturado, el paso 3 se omite y se responde desde el CSV
+   en modo sin IA, sin devolver errores 5xx.
 
 ### Herramientas disponibles
 
@@ -243,8 +262,8 @@ EvaluacionIA1/
 | `recuperar_memoria` | consulta | Hechos recordados de sesiones anteriores |
 | `recordar_dato` | **escritura** | Persiste un dato del cliente en largo plazo |
 | `exportar_cotizacion` | **escritura** | Escribe la cotización en **PDF** (y una copia JSON) en `data/exports/` |
-| `enviar_cotizacion_email` | **escritura** | Envía la cotización por correo con el **PDF adjunto** (SMTP real) |
-| `registrar_venta` | **escritura** | Registra la venta y **descuenta el stock** en la BD interna |
+| `enviar_cotizacion_email` | **escritura** | Usa el correo de la cuenta logueada y adjunta el **PDF**; con SMTP real lo envía, en `dry` deja el `.eml` |
+| `registrar_venta` | **escritura** | Doble confirmación con token; registra la venta y **descuenta el stock** real |
 | `recomendar_repuesto` | consulta | Recomienda el repuesto cruzando inventario, compatibilidad y manual |
 
 ### Base de datos interna, ventas y envío real por correo
@@ -256,14 +275,18 @@ catálogo (descripción, marca, precio, compatibilidad) y se re-sincroniza con e
 stock después de cada venta, de modo que guardrails, tools, RAG y la interfaz
 web nunca muestran existencias viejas.
 
-- `registrar_venta` descuenta stock de verdad (nunca queda negativo: la
-  transacción se revierte completa), deja la venta auditada con su referencia
-  (`V-0001`) y puede mandar el comprobante por correo.
+- `registrar_venta` requiere **doble confirmación**: la primera llamada solo
+  prepara la operación y devuelve un token (vigencia de 5 min, configurable con
+  `VENTA_CONFIRMACION_TTL_S`); solo la segunda con `confirmado=true` descuenta
+  stock de verdad (nunca queda negativo: la transacción se revierte completa),
+  deja la venta auditada con su referencia (`V-0001`) y puede mandar el
+  comprobante por correo.
 - `recomendar_repuesto` es el pipeline completo del encargo: RAG interno +
   compatibilidad registrada + RAG de manuales con cita de la fuente.
 
-El envío de correo es **real por defecto** (`EMAIL_MODE="smtp"`). Configura en
-`.env` (gitignored, nunca se versiona):
+El código soporta envío real (`EMAIL_MODE="smtp"`), pero **en el despliegue
+actual está en `dry`**: no sale ningún correo y la herramienta lo dice. Para
+activarlo, configura en `.env` (gitignored, nunca se versiona):
 
 ```bash
 EMAIL_MODE="smtp"
@@ -273,24 +296,26 @@ SMTP_USER="tu-correo@gmail.com"
 SMTP_PASSWORD="..."             # Gmail/Outlook: CONTRASEÑA DE APLICACIÓN
 SMTP_TLS="1"                   # 1 = STARTTLS (587), SMTP_SSL="1" = 465
 EMAIL_FROM="Repuestos Sur"      # vacío = usa SMTP_USER
-EMAIL_DOMAINS_ALLOWLIST="gmail.com,ejemplo.com"   # vacío = sin restricción
+EMAIL_DOMAINS_ALLOWLIST=""      # vacío = sin restricción (necesario para @lab)
 ```
 
 La herramienta nunca dice "enviada" si no lo envió: sin credenciales responde
-*"preparada, no se envió"* (deja el `.eml` en `data/exports/`), y si el SMTP
-falla informa el error.
+*"preparada, NO se envió a <correo>"* (deja el `.eml` en `data/exports/`), y si
+el SMTP falla informa el error.
 
 ### 📧 Envío de cotizaciones por correo
 
-El agente pide la dirección del cliente si no se la dieron y luego llama
-`enviar_cotizacion_email`, que arma el cuerpo del correo **con los precios y el
-stock del CSV** (nunca con lo que dice el modelo), adjunta la cotización en
-**PDF** y registra el envío en `data/exports/envios.jsonl`.
+El agente **no pide la dirección**: usa el correo guardado en la cuenta con la
+que se inició sesión. Llama `enviar_cotizacion_email`, que arma el cuerpo con
+los precios y el stock del CSV (nunca con lo que dice el modelo), adjunta la
+cotización en **PDF** y registra el resultado en `data/exports/envios.jsonl`.
+Aunque el cliente escriba otra dirección en el chat, prevalece la de la cuenta.
 
-Por defecto el envío es **real por SMTP** (`EMAIL_MODE="smtp"`): el correo sale
-a internet y queda registrado en `data/exports/envios.jsonl`. Si el servidor SMTP
-no está configurado, el correo queda como `.eml` en `data/exports/` (modo
-dry-run) y la herramienta lo dice: nunca afirma un envío que no ocurrió.
+Con SMTP real (`EMAIL_MODE="smtp"` y credenciales) el correo sale a internet.
+Si no hay credenciales o está en `dry`, queda un `.eml` en `data/exports/` y la
+herramienta responde *"preparada, NO se envió"*: nunca afirma un envío que no
+ocurrió. En `dry` se aceptan direcciones de prueba sin TLD real (p. ej.
+`probador1@lab`) porque no salen a internet.
 
 ```bash
 EMAIL_MODE="smtp"
@@ -337,13 +362,22 @@ Implementadas como **código** en `agent/guardrails.py`, no solo en el prompt:
   `no verificado` y se avisa.
 - Stock menor a 5 o agotado → alerta explícita, verificada tras la respuesta.
 
+Además, el acceso y el transporte están endurecidos: HTTPS con HSTS y cookie
+`Secure`, CSP con nonce por respuesta (sin `unsafe-inline`), verificación de
+`Origin` en escrituras, sesiones server-side, roles (cliente/admin), rate limit
+y **memoria de largo plazo separada por usuario**. Las ventas requieren doble
+confirmación para evitar que un solo mensaje descuente el stock.
+
 ### Resiliencia ante límite de tasa (Groq gratuito: 8 000 TPM y 200 000 TPD por modelo)
 
 Solo los errores 429 se reintentan (4 intentos, espera 20s/40s/60s/80s) en
 `agent/agent.py` + `agent/llm_client.py`; otros errores caen directo al
 fallback sin duplicar llamadas. Configurable con `AGENT_RETRY_ATTEMPTS` y
 `AGENT_RETRY_BASE_S`. Para los evals, la pausa `--pausa` entre casos evita
-llegar al límite.
+llegar al límite. Hay además un **circuit breaker** (`AGENT_CIRCUIT_THRESHOLD`/
+`AGENT_CIRCUIT_COOLDOWN_S`) y una cola acotada: cuando se saturan, la web
+responde `200` en modo sin IA con `retry_after`, no un `503`. La evidencia con
+mocks está en `tests/resultados/security/p5_rate_limit_checks.md`.
 
 El plan gratuito también tiene un **límite diario de tokens (TPD)**: cuando se
 agota, la cuota no se recupera esperando en la misma sesión (se reinicia a la
@@ -372,9 +406,21 @@ Orquestación, flujos feliz/negativa y memoria en [`docs/diagramas.md`](docs/dia
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | Servidor y credenciales SMTP (Gmail/Outlook: contraseña de aplicación) | `smtp.gmail.com` / `587` / — / — |
 | `SMTP_TLS` / `SMTP_SSL` / `EMAIL_TIMEOUT_S` | STARTTLS, SSL directo (465) y timeout de espera | `1` / `0` / `15` |
 | `EMAIL_FROM` | Remitente con nombre visible (la dirección siempre es `SMTP_USER`) | `Repuestos Sur` |
-| `EMAIL_DOMAINS_ALLOWLIST` | Dominios permitidos para envío (vacío = todos) | — |
+| `EMAIL_DOMAINS_ALLOWLIST` | Dominios permitidos para envío (vacío = todos) | — (en producción, vacío) |
+| `EMAIL_ALLOW_TEST_ADDRESSES` | Acepta correos tipo `algo@algo` también con SMTP configurado | — |
 | `INVENTORY_PATH` / `TIENDA_DB_PATH` | CSV del catálogo y BD SQLite del stock real (los tests y evals los aíslan) | `data/internal/inventory.csv` / `data/internal/tienda.db` |
 | `EXPORTS_DIR` | Carpeta de cotizaciones (PDF + JSON), `.eml` y `envios.jsonl` (los tests la aíslan) | `data/exports` |
+| `ADMIN_USER` / `ADMIN_PASSWORD` / `ADMIN_EMAIL` | Admin inicial (solo si no existe otro admin) | — |
+| `AUTH_DB_PATH` | BD de usuarios, sesiones y auditoría | `data/internal/auth.db` |
+| `WEB_SESSION_TTL_S` / `LOGIN_MAX_ATTEMPTS` / `LOGIN_LOCKOUT_S` | Sesión, bloqueo y auditoría de login | `28800` / `5` / `900` |
+| `AUDIT_RETENTION_DAYS` / `REGISTER_MAX_PER_HOUR` | Retención de auditoría y anti-spam | `30` / `50` |
+| `MAX_CONCURRENT_CHATS` / `CHAT_QUEUE_WAIT_S` / `CHAT_RATE_LIMIT_PER_MIN` | Cola y rate limit de chats | `3` / `15` / `20` |
+| `WEB_RETRY_WAIT_S` / `AGENT_CIRCUIT_THRESHOLD` / `AGENT_CIRCUIT_COOLDOWN_S` | Backoff máximo en web y circuit breaker | `5` / `3` / `30` |
+| `REPUSTOS_HOST` / `REPUSTOS_PORT` / `REPUSTOS_HTTPS` / `REPUSTOS_ALLOWED_ORIGIN` | Bind, puerto, cookie `Secure` y CORS | `127.0.0.1` / `8000` / `1` en producción / — |
+| `CHAT_SESSION_TTL_S` / `MAX_CHAT_SESSIONS` / `MAX_MEMORIA_REGISTROS` | LRU/TTL de sesiones y tope de memoria larga | `28800` / `200` / `500` |
+| `VENTA_CONFIRMACION_TTL_S` | Vigencia del token de doble confirmación de venta | `300` |
+
+La lista completa de variables y comentarios está en [`.env.example`](.env.example).
 
 ## 📊 Resultado de las pruebas
 
@@ -390,6 +436,21 @@ Orquestación, flujos feliz/negativa y memoria en [`docs/diagramas.md`](docs/dia
 | Fecha | 2026-10-22 |
 
 Detalle por caso en [`tests/resultados/eval_reporte.md`](tests/resultados/eval_reporte.md).
+
+**Verificación actual del despliegue (2026-11-25):**
+
+| Prueba | Resultado |
+|---|---|
+| `python -m pytest tests -q` | **37/37** |
+| P1 — higiene y secretos | limpio |
+| P3 — fuzz contra la URL pública (`https://`) | **15/15** |
+| P4 — red team (sin el caso de correo) | 5 casos, revisados manualmente |
+| P5 — 429/TPD con mocks | **14/14** |
+| Carga, 10 usuarios × 2 consultas | **20/20 en 200**, 0 `503`, p95 40,3 s |
+
+El detalle está en `tests/resultados/security/` y
+`tests/resultados/load/load_test.json`. La suite de 18 casos no se re-corrío
+tras el cambio a doble confirmación de C17: los criterios del caso no cambiaron.
 
 > Corridas anteriores: **17/18 (94,4 %)** el 2026-10-22 con `qwen/qwen3.8-27b`
 > (falló C18 porque el modelo pedía el tipo de repuesto en vez de llamar a la
@@ -415,6 +476,13 @@ Detalle por caso en [`tests/resultados/eval_reporte.md`](tests/resultados/eval_r
   generados y están en `.gitignore`.
 - `uv.lock` corresponde al lock inicial del proyecto; con `pip` se usa
   `requirements.txt`.
+- El HTTPS del despliegue usa un certificado **autofirmado**; para quitar la
+  advertencia del navegador hace falta un dominio con Certbot/ALB.
+- El envío de correo sigue en **`dry`** en producción: la cotización queda
+  preparada con su `.eml`, pero no sale a internet. Configurar SMTP es una
+  tarea pendiente (ver `AVANCES.md`).
+- La memoria de largo plazo recorta por orden de llegada y no resuelve hechos
+  contradictorios (aunque ahora está separada por usuario).
 - **Si el agente responde "no tengo información suficiente" a una consulta que
   sí está en los manuales**, el índice de ChromaDB puede estar corrupto (síntoma
   típico: `Error creating hnsw segment reader: Nothing found on disk`). La
