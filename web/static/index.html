@@ -19,6 +19,13 @@
    header #status{margin-left:auto}
    header a{color:#cfe0ff}
    header button{padding:4px 10px;font-size:12px}
+   header #userbox .admin-btn{display:inline-flex;align-items:center;gap:6px;
+     margin-left:8px;padding:7px 13px;border-radius:9px;
+     background:linear-gradient(135deg,#0b5cff,#2f8bff);color:#fff!important;
+     font-size:12px;font-weight:700;text-decoration:none;
+     border:1px solid rgba(255,255,255,.25);box-shadow:0 3px 10px rgba(11,92,255,.35)}
+   header #userbox .admin-btn:hover{background:linear-gradient(135deg,#0846c4,#0b5cff);
+     box-shadow:0 4px 14px rgba(11,92,255,.5)}
   header .status{font-size:12px;background:#1c2b44;color:#cfe0ff;
                  padding:4px 10px;border-radius:99px}
   main{max-width:900px;margin:0 auto;padding:16px;display:grid;gap:14px}
@@ -185,7 +192,9 @@ async function loadMe() {
     const me = await api("/api/me");
     $("userbox").innerHTML = `${esc(me.usuario)} · ${esc(me.rol)}` +
       (me.email ? ` · ${esc(me.email)}` : "") +
-      (me.rol === "admin" ? ` · <a href="/admin">admin</a>` : "");
+      (me.rol === "admin"
+        ? ` <a class="admin-btn" href="/admin" title="Abrir panel de administración">⚙️ Panel admin</a>`
+        : "");
   } catch (e) { /* api() ya redirige al login */ }
 }
 

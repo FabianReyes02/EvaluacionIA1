@@ -33,6 +33,14 @@
   .admin{background:#e8f0ff;color:var(--brand)} .cliente{background:#eef2f7;color:var(--muted)}
   .ok{background:#e4f6ec;color:var(--ok)} .warn{background:#fdf2df;color:var(--warn)} .bad{background:#fdeae7;color:var(--bad)}
   .msg{font-size:13px;min-height:18px;color:var(--bad);margin-top:6px}
+  .tabs{display:inline-flex;gap:6px;background:var(--card);border:1px solid var(--line);
+        border-radius:10px;padding:6px;width:fit-content;max-width:100%}
+  .tab{background:transparent;color:var(--muted);border:0;border-radius:8px;
+       padding:8px 16px;font-weight:600;cursor:pointer}
+  .tab:hover{background:#eef2f7;color:var(--ink)}
+  .tab.activa{background:#e8f0ff;color:var(--brand)}
+  .panel{display:none;gap:14px}
+  .panel.activa{display:grid}
   .scroll{max-height:340px;overflow:auto}
   .hint{font-size:12px;color:var(--muted)}
 </style>
@@ -45,6 +53,13 @@
   <button class="ghost" id="logout">Cerrar sesión</button>
 </header>
 <main>
+  <div class="tabs" id="tabs">
+    <button class="tab activa" type="button" data-panel="panel-usuarios">👥 Gestión de usuarios</button>
+    <button class="tab" type="button" data-panel="panel-auditoria">📜 Auditoría</button>
+    <button class="tab" type="button" data-panel="panel-inventario">📦 Inventario</button>
+  </div>
+
+  <div class="panel activa" id="panel-usuarios">
   <section class="card">
     <h2>Crear usuario</h2>
     <form class="inline" id="newUser">
@@ -73,7 +88,9 @@
       </table></div>
     </section>
   </div>
+  </div>
 
+  <div class="panel" id="panel-auditoria">
   <section class="card">
     <h2>Auditoría (últimos 30 días)</h2>
     <form class="inline" id="filters">
@@ -87,7 +104,9 @@
       <tbody id="audit"></tbody>
     </table></div>
   </section>
+  </div>
 
+  <div class="panel" id="panel-inventario">
   <section class="card">
     <h2>Inventario</h2>
     <div class="scroll"><table>
@@ -95,6 +114,7 @@
       <tbody id="parts"></tbody>
     </table></div>
   </section>
+  </div>
 </main>
 <script>
 const $ = (id) => document.getElementById(id);
@@ -202,6 +222,14 @@ $("filters").addEventListener("submit", e => { e.preventDefault(); loadAudit(); 
 $("refresh").addEventListener("click", () => { loadUsers(); loadSessions(); loadAudit(); });
 $("logout").addEventListener("click", async () => {
   await api("/api/logout", {method:"POST"}); location.href = "/login";
+});
+
+$("tabs").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-panel]");
+  if (!btn) return;
+  document.querySelectorAll("#tabs .tab").forEach(b => b.classList.toggle("activa", b === btn));
+  document.querySelectorAll(".panel").forEach(p =>
+    p.classList.toggle("activa", p.id === btn.dataset.panel));
 });
 
 // Eventos delegados: el CSP con nonce no permite manejadores inline (onclick=).
