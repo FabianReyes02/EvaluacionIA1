@@ -1,5 +1,9 @@
 # 🚗 Asistente de IA para Venta de Repuestos Automotrices (RAG + Agente)
 
+**Video Demo**
+
+https://github.com/user-attachments/assets/b1c330e4-6d97-42c4-8072-9a4de24596c0
+
 **ISY0101 · Ingeniería de Soluciones con IA · Evaluación Parcial**
 
 > Repositorio con el código fuente, la documentación de funcionamiento y la
